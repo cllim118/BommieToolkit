@@ -11,12 +11,16 @@ match_images_by_ns = "python scripts/match_images_by_ns.py"
 get_rig_config_json= "python scripts/convert_camchain_to_rig_config.py"
 colmap2nerf = { cmd = "python ../scripts/colmap2nerf.py", cwd = "monkey_output" }
 extract_images_dev = "python scripts/vid2imgs_dev.py"
+visualize_colmap = "python scripts/colmap_rerun.py"
 
 [dependencies]
 python = "*"
 opencv = "*"
 tqdm = "*"
 pyyaml = "*"
+
+[pypi-dependencies]
+rerun-sdk = ">=0.21,<1"
 
 [environments]
 kalibr = {features = ["kalibr"], no-default-feature = true}

@@ -144,12 +144,37 @@ pixi run -e colmap colmap mapper \
   --Mapper.ba_use_gpu 1
 ```
 
-Visualize reconstruction
+Visualize reconstruction with COLMAP GUI
 ```bash
 pixi run -e colmap colmap gui \
   --database_path monkey_output/database.db  \
   --image_path monkey_output/colmap_images \
   --import_path monkey_output/sparse/0
+```
+
+Visualize reconstruction with [Rerun](https://rerun.io) (interactive 3-D viewer with camera poses, point cloud and reprojected keypoints)
+```bash
+# Binary model (default after mapper)
+pixi run visualize_colmap \
+  --sparse_dir monkey_output/sparse/0 \
+  --images_dir monkey_output/colmap_images
+
+# Text model (after model_converter --output_type TXT) — also supported
+pixi run visualize_colmap \
+  --sparse_dir monkey_output/sparse/0 \
+  --images_dir monkey_output/colmap_images
+
+# Open Rerun viewer in browser instead of the desktop app
+pixi run visualize_colmap \
+  --sparse_dir monkey_output/sparse/0 \
+  --images_dir monkey_output/colmap_images \
+  --serve
+
+# Resize images before streaming (saves bandwidth when working remotely)
+pixi run visualize_colmap \
+  --sparse_dir monkey_output/sparse/0 \
+  --images_dir monkey_output/colmap_images \
+  --resize 1280x720
 ```
 
 Get COLMAP output
