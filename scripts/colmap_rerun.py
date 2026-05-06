@@ -324,6 +324,10 @@ def log_reconstruction(
     rr.log("description", rr.TextDocument(DESCRIPTION, media_type=rr.MediaType.MARKDOWN), static=True)
     rr.log("/", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
     rr.log("plot/avg_reproj_err", rr.SeriesLines(colors=[240, 45, 58]), static=True)
+    
+    full_pointcloud = np.array([pt.xyz for pt in points3D.values()]) if points3D else np.zeros((0, 3))
+    full_colors     = np.array([pt.rgb for pt in points3D.values()], dtype=np.uint8) if points3D else np.zeros((0, 3), dtype=np.uint8)
+    rr.log("Full Model", rr.Points3D(full_pointcloud, colors=full_colors), static=True)
 
     for image in sorted(images.values(), key=lambda im: im.name):
         # Determine frame index from the numeric suffix in the image name
@@ -354,7 +358,8 @@ def log_reconstruction(
 
         # Point cloud
         pt_xyzs   = np.array([pt.xyz for pt in visible_pts]) if visible_pts else np.zeros((0, 3))
-        pt_colors = np.array([pt.rgb for pt in visible_pts], dtype=np.uint8) if visible_pts else np.zeros((0, 3), dtype=np.uint8)
+        #pt_colors = np.array([pt.rgb for pt in visible_pts], dtype=np.uint8) if visible_pts else np.zeros((0, 3), dtype=np.uint8)
+        pt_colors = np.array([np.array([255, 0, 0], dtype=np.uint8) for pt in visible_pts], dtype=np.uint8) if visible_pts else np.zeros((0, 3), dtype=np.uint8)
         pt_errors = [pt.error for pt in visible_pts]
 
         rr.log("plot/avg_reproj_err", rr.Scalars(float(np.mean(pt_errors)) if pt_errors else 0.0))
