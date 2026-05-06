@@ -111,6 +111,7 @@ pixi run -e colmap colmap feature_extractor \
   --database_path monkey_output/database.db \
   --ImageReader.single_camera 1 \
   --ImageReader.single_camera_per_folder 1 \
+#  --ImageReader.mask_path monkey_output/masks \ To be used in case masks were produced using SAM3
   --ImageReader.single_camera_per_image 0
 ```
 
@@ -170,6 +171,10 @@ pixi run -e colmap colmap model_converter \
 ```bash
 pixi run colmap2nerf --text sparse/0 --images colmap_images --out transforms.json --keep_colmap_coords
 ```
+In case the masks corresponding to the images were generated using SAM3, we need to add the mask flag. The mask folder has to have the same structure as the colmap_images folder. 
+```bash
+pixi run colmap2nerf --text sparse/0 --images colmap_images --masks masks --out transforms.json --keep_colmap_coords
+```
 
 ## GS Reconstruction with nerfstudio
 
@@ -181,8 +186,13 @@ pixi shell
 ```
 
 ```bash
-ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output
+ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output --vis viewer
 ```
+In case the masking has been performed previously on the images, and we are working on the masked images the command becomes:
+```bash
+ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output --vis viewer --pipeline.model.background_color "random"
+```
+
 
 ```bash
 ns-viewer --load-config outputs/monkey_output/splatfacto/2025-11-19_105617/config.yml
