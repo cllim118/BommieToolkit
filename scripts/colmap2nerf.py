@@ -17,6 +17,7 @@ import json
 import sys
 import math
 import cv2
+from PIL import Image
 import os
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -25,6 +26,7 @@ SCRIPTS_FOLDER = os.path.join(ROOT_DIR, "scripts")
 def parse_args():
 	parser = argparse.ArgumentParser(description="Convert a text colmap export to nerf format transforms.json.")
 	parser.add_argument("--images", default="images", required=True, help="Input path to the images.")
+	parser.add_argument("--masks", default=None, required=False, help="Input path to the masks.")
 	parser.add_argument("--text", default="colmap_text", required=True, help="Input path to the colmap text files (set automatically if --run_colmap is used).")
 	parser.add_argument("--aabb_scale", default=32, choices=["1", "2", "4", "8", "16", "32", "64", "128"], help="Large scene scale factor. 1=scene fits in unit cube; power of 2 up to 128")
 	parser.add_argument("--skip_early", default=0, help="Skip this many images from the start.")
@@ -99,6 +101,7 @@ if __name__ == "__main__":
 	AABB_SCALE = int(args.aabb_scale)
 	SKIP_EARLY = int(args.skip_early)
 	IMAGE_FOLDER = args.images
+	MASK_FOLDER = args.masks
 	TEXT_FOLDER = args.text
 	OUT_PATH = args.out
 
@@ -256,6 +259,25 @@ if __name__ == "__main__":
 					up += c2w[0:3,1]
 
 				frame = {"file_path":name,"sharpness":b,"transform_matrix": c2w}
+				if MASK_FOLDER is not None:
+					# Apply the masking to the image and add alpha channel
+					mask_rel = os.path.relpath(MASK_FOLDER)
+					base_name = '_'.join(elems[9:]).rsplit('.', 1)[0]
+					mask_name = str(f"./{mask_rel}/{base_name}.png")
+					
+					mask = np.asarray(Image.open(mask_name).convert("L")).copy()
+					img = np.asarray(Image.open(name).convert("RGB")).copy()
+					img[mask == 0, :] = 0
+
+					if mask.ndim == 2:
+						mask = mask[:, :, np.newaxis]
+
+					img_with_alpha = np.concatenate((img, mask), axis=-1)
+					img_with_alpha = Image.fromarray(img_with_alpha.astype(np.uint8), mode="RGBA")
+					masked_img_path = str(f"./masked_images/{base_name}.png")
+					img_with_alpha.save(masked_img_path)
+					frame["file_path"] = masked_img_path
+
 				if len(cameras) != 1:
 					frame.update(cameras[int(elems[8])])
 				out["frames"].append(frame)
