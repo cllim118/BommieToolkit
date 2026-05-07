@@ -43,7 +43,7 @@ build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE
 kalibr-calibrate-stereo-rig = {cmd = "./scripts/calibrate_stereo_rig.sh"}
 
 [feature.kalibr.dependencies]
-python = {version="3.9.18", build="h0755675_0_cpython", channel="https://fast.prefix.dev/conda-forge"}
+python = {version="3.9.18.*", build="h0755675_0_cpython", channel="https://fast.prefix.dev/conda-forge"}
 ros-noetic-desktop="*"
 compilers="*"
 cmake="*"
@@ -54,7 +54,7 @@ colcon-common-extensions="*"
 catkin_tools="*"
 rosdep="*"
 boost="*"
-suitesparse = {version="5.4.0", build="h717dc36_0", channel="https://fast.prefix.dev/conda-forge"}
+suitesparse = {version="5.4.0.*", build="h717dc36_0", channel="https://fast.prefix.dev/conda-forge"}
 tbb="*"
 opencv="*"
 libv4l="*"
@@ -81,7 +81,7 @@ igraph="*"
 # sam feature
 [feature.sam]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.sam.system-requirements]
 cuda = "12.6"
@@ -94,7 +94,6 @@ no-build-isolation = true
 
 [feature.sam.pypi-dependencies]
 sam3 = { git = "https://github.com/BommieToolkit/sam3_bommie" }
-decord = ">=0.6.0, <0.7"
 
 [feature.sam.dependencies]
 # Core Python + GPU
@@ -102,13 +101,28 @@ python = "3.12.*"
 pip = "*"
 setuptools="80.*"
 pkg-config="*"
-pytorch-gpu = "*"
 torchvision = "*"
 numpy = "1.26.*"
 scipy = "1.16.*"
 pandas = "2.3.*"
 opencv = "*"              # image processing
 typing_extensions = "*"
+
+# Utilities
+ffmpeg = "*"              # video handling
+tqdm = "*"
+timm = "*"
+ftfy = "==6.1.1"
+regex = "*"
+iopath = "*"
+huggingface_hub = ">=0.23"
+gradio = "*"
+einops = ">=0.8.2,<0.9"
+pycocotools = ">=2.0.11,<3"
+psutil = ">=7.2.2,<8"
+
+[feature.sam.target.linux-64.dependencies]
+pytorch-gpu = "*"
 
 # CUDA
 # CUDA Build Tools
@@ -136,18 +150,11 @@ libcusolver-dev = "*"
 cusparselt = "*"
 libnvjitlink = "*"
 
-# Utilities
-ffmpeg = "*"              # video handling
-tqdm = "*"
-timm = "*"
-ftfy = "==6.1.1"
-regex = "*"
-iopath = "*"
-huggingface_hub = ">=0.23"
-gradio = "*"
-einops = ">=0.8.2,<0.9"
-pycocotools = ">=2.0.11,<3"
-psutil = ">=7.2.2,<8"
+[feature.sam.target.linux-64.pypi-dependencies]
+decord = ">=0.6.0, <0.7"
+
+[feature.sam.target.osx-arm64.dependencies]
+pytorch = "*"
 
 ########################################################################################################################
 ########################################################################################################################
