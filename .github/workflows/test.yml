@@ -17,16 +17,21 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-64
+            sam-env: sam-linux
           - os: macos-14  # Apple Silicon (osx-arm64)
             platform: osx-arm64
+            sam-env: sam-mac
+
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: prefix-dev/setup-pixi@v0.8.8
         with:
-          environments: default colmap sam
+          environments: default colmap ${{ matrix.sam-env }}
           locked: false
+        env:
+          CONDA_OVERRIDE_CUDA: ${{ matrix.platform == 'linux-64' && '12.6' || '' }}
 
       - name: Run extract_images --help
         run: pixi run extract_images --help
@@ -41,4 +46,4 @@ jobs:
         run: pixi run -e colmap colmap --help
 
       - name: Check sam environment
-        run: pixi run -e sam python --version
+        run: pixi run -e ${{ matrix.sam-env }} python --version
