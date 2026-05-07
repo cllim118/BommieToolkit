@@ -1,0 +1,44 @@
+name: Test pixi environments
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-64
+          - os: macos-14  # Apple Silicon (osx-arm64)
+            platform: osx-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.8.8
+        with:
+          environments: default colmap sam
+          locked: false
+
+      - name: Run extract_images --help
+        run: pixi run extract_images --help
+
+      - name: Run match_images_by_ns --help
+        run: pixi run match_images_by_ns --help
+
+      - name: Run get_rig_config_json --help
+        run: pixi run get_rig_config_json --help
+
+      - name: Check colmap environment
+        run: pixi run -e colmap colmap --help
+
+      - name: Check sam environment
+        run: pixi run -e sam python --version

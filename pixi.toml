@@ -161,15 +161,18 @@ pytorch = "*"
 # colmap feature
 [feature.colmap]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.colmap.system-requirements]
 cuda = "12.6"
 
-[feature.colmap.tasks]
-
-[feature.colmap.dependencies]
+[feature.colmap.target.linux-64.dependencies]
 colmap = { build="*cuda*", version = "==3.11.1" }
+
+[feature.colmap.target.osx-arm64.dependencies]
+colmap = { version = "==3.11.1" }
+
+[feature.colmap.tasks]
 
 ########################################################################################################################
 ########################################################################################################################
