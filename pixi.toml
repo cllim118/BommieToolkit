@@ -19,8 +19,6 @@ opencv = "*"
 tqdm = "*"
 pyyaml = "*"
 pillow = ">=12.2.0,<13"
-
-[pypi-dependencies]
 rerun-sdk = ">=0.21,<1"
 
 [environments]
@@ -33,31 +31,32 @@ sam = {features = ["sam"], no-default-feature = true}
 ########################################################################################################################
 # kalibr feature
 [feature.kalibr]
-channels = ["https://fast.prefix.dev/conda-forge", "esrf-bcu", "robostack-staging"]
-platforms = ["linux-64"]
+channels = ["conda-forge", "esrf-bcu", "robostack-staging"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.kalibr.tasks]
-create_catkin_ws = "mkdir -p catkin_ws/src && cd catkin_ws && catkin init"
-git-clone = {cmd = "git clone https://github.com/alejandrofontan/kalibr.git catkin_ws/src/kalibr", depends-on = ["create_catkin_ws"] }
-build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5", cwd="catkin_ws", depends-on = ["git-clone"] }
+create_catkin_ws = "rm -rf catkin_ws && mkdir -p catkin_ws/src && cd catkin_ws && catkin init"
+git-clone = {cmd = "git clone https://github.com/Tobias-Fischer/kalibr.git catkin_ws/src/kalibr", depends-on = ["create_catkin_ws"] }
+build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.20", cwd="catkin_ws", depends-on = ["git-clone"] }
 kalibr-calibrate-stereo-rig = {cmd = "./scripts/calibrate_stereo_rig.sh"}
 
 [feature.kalibr.dependencies]
-python = {version="3.9.18.*", build="h0755675_0_cpython", channel="https://fast.prefix.dev/conda-forge"}
+python = "3.12.*"
 ros-noetic-desktop="*"
 compilers="*"
-cmake="*"
+cmake="<4"
+cctools="*"
 pkg-config="*"
 make="*"
 ninja="*"
 colcon-common-extensions="*"
 catkin_tools="*"
 rosdep="*"
-boost="*"
-suitesparse = {version="5.4.0.*", build="h717dc36_0", channel="https://fast.prefix.dev/conda-forge"}
-tbb="*"
+libboost-devel="*"
+tapi="*"
+suitesparse = "*"
+tbb-devel="*"
 opencv="*"
-libv4l="*"
 pip="*"
 scipy="*"
 matplotlib="*"
@@ -72,9 +71,14 @@ pillow = "*"
 ffmpeg-python = "*"
 ffmpeg = "*"
 exiftool = "*"
+eigen-abi-devel = "*"
+ros-dev-tools = "*"
 
 [feature.kalibr.pypi-dependencies]
 igraph="*"
+
+[feature.kalibr.target.linux-64.dependencies]
+libv4l="*"
 
 ########################################################################################################################
 ########################################################################################################################
