@@ -104,6 +104,7 @@ def yaml_to_rig_config(yaml_path: Path, json_path: Path):
 
     rig_config = [{"cameras": cameras_out}]
 
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w") as f:
         json.dump(rig_config, f, indent=2)
 
