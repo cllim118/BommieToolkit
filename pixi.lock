@@ -1412,6 +1412,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/sysroot_linux-64-2.28-h4ee821c_9.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tapi-1000.10.8-hc9558a2_4.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2023.0.0-h51de99f_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-devel-2023.0.0-h51de99f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tinyxml-2.6.2-h4bd325d_2.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tinyxml2-11.0.0-h3f2d84a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
@@ -2020,6 +2021,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/swig-4.4.1-h4366dc5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tapi-1600.0.11.8-h997e182_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tbb-2023.0.0-h124206c_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tbb-devel-2023.0.0-h213eb51_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tinyxml-2.6.2-h260d524_2.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tinyxml2-11.0.0-ha1acc90_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-h010d191_3.conda
@@ -33259,6 +33261,27 @@ packages:
   purls: []
   size: 121971
   timestamp: 1777976847894
+- conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-devel-2023.0.0-h51de99f_1.conda
+  sha256: abd46ca9f47410af4a75570da3a53833a7d2bc7f3ace2eaa047475fd9a68697a
+  md5: b5183124aa9bc73d28ed7968174da5d8
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - libstdcxx >=14
+  - tbb 2023.0.0 h51de99f_1
+  purls: []
+  size: 1139588
+  timestamp: 1777976307472
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/tbb-devel-2023.0.0-h213eb51_1.conda
+  sha256: 79bef336a14ad21dce7b18afc6aff9e5206aace6b3c258386692036265c84cbc
+  md5: cc09de0e8671a2909f010de3ea94039c
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - tbb 2023.0.0 h124206c_1
+  purls: []
+  size: 1139738
+  timestamp: 1777976874254
 - pypi: https://files.pythonhosted.org/packages/24/99/4772b8e00a136f3e01236de33b0efda31ee7077203ba5967fcc76da94d65/texttable-1.7.0-py2.py3-none-any.whl
   name: texttable
   version: 1.7.0
