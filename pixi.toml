@@ -37,8 +37,7 @@ platforms = ["linux-64", "osx-arm64"]
 [feature.kalibr.tasks]
 create_catkin_ws = "rm -rf catkin_ws && mkdir -p catkin_ws/src && cd catkin_ws && catkin init"
 git-clone = {cmd = "git clone https://github.com/Tobias-Fischer/kalibr.git catkin_ws/src/kalibr", depends-on = ["create_catkin_ws"] }
-patch-kalibr = { cmd = "git -C catkin_ws/src/kalibr apply ../../../patch/kalibr-python-module-linking.patch", depends-on = ["git-clone"] }
-build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.20 -DCMAKE_CXX_STANDARD=14", cwd="catkin_ws", depends-on = ["patch-kalibr"] }
+build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.20 -DCMAKE_CXX_STANDARD=14", cwd="catkin_ws", depends-on = ["git-clone"] }
 kalibr-calibrate-stereo-rig = {cmd = "./scripts/calibrate_stereo_rig.sh"}
 
 [feature.kalibr.dependencies]

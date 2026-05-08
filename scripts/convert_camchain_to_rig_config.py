@@ -2,6 +2,7 @@
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 
 import yaml 
@@ -59,6 +60,11 @@ def topic_to_prefix(topic: str) -> str:
 
 
 def yaml_to_rig_config(yaml_path: Path, json_path: Path):
+    if not yaml_path.is_file():
+        raise FileNotFoundError(
+            f"Camchain file not found: {yaml_path}. Run kalibr calibration first or pass camchain_path."
+        )
+
     with yaml_path.open("r") as f:
         calib = yaml.safe_load(f)
 
@@ -125,7 +131,11 @@ def main():
     )
     args = ap.parse_args()
 
-    yaml_to_rig_config(args.yaml_in, args.json_out)
+    try:
+        yaml_to_rig_config(args.yaml_in, args.json_out)
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
