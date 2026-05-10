@@ -32,6 +32,7 @@ def parse_args():
 	parser.add_argument("--skip_early", default=0, help="Skip this many images from the start.")
 	parser.add_argument("--keep_colmap_coords", action="store_true", help="Keep transforms.json in COLMAP's original frame of reference (this will avoid reorienting and repositioning the scene for preview and rendering).")
 	parser.add_argument("--out", default="transforms.json", help="Output JSON file path.")
+	parser.add_argument("--ply_file_path", default=None, help="Optional path to a COLMAP mesh PLY to reference from transforms.json.")
 	parser.add_argument("--overwrite", action="store_true", help="Do not ask for confirmation for overwriting existing images and COLMAP data.")
 	parser.add_argument("--mask_categories", nargs="*", type=str, default=[], help="Object categories that should be masked out from the training images. See `scripts/category2id.json` for supported categories.")
 	args = parser.parse_args()
@@ -104,6 +105,11 @@ if __name__ == "__main__":
 	MASK_FOLDER = args.masks
 	TEXT_FOLDER = args.text
 	OUT_PATH = args.out
+	OUT_DIR = Path(OUT_PATH).resolve().parent
+
+	def output_relative_path(path):
+		relpath = os.path.relpath(Path(path).resolve(), OUT_DIR)
+		return "./" + relpath.replace(os.sep, "/")
 
 	# Check that we can save the output before we do a lot of work
 	try:
@@ -237,11 +243,9 @@ if __name__ == "__main__":
 				continue
 			if  i % 2 == 1:
 				elems=line.split(" ") # 1-4 is quat, 5-7 is trans, 9ff is filename (9, if filename contains no spaces)
-				#name = str(PurePosixPath(Path(IMAGE_FOLDER, elems[9])))
-				# why is this requireing a relitive path while using ^
-				image_rel = os.path.relpath(IMAGE_FOLDER)
-				name = str(f"./{image_rel}/{'_'.join(elems[9:])}")
-				b = sharpness(name)
+				image_path = Path(IMAGE_FOLDER, "_".join(elems[9:]))
+				name = output_relative_path(image_path)
+				b = sharpness(str(image_path))
 				print(name, "sharpness=",b)
 				image_id = int(elems[0])
 				qvec = np.array(tuple(map(float, elems[1:5])))
@@ -266,7 +270,7 @@ if __name__ == "__main__":
 					mask_name = str(f"./{mask_rel}/{base_name}.png")
 					
 					mask = np.asarray(Image.open(mask_name).convert("L")).copy()
-					img = np.asarray(Image.open(name).convert("RGB")).copy()
+					img = np.asarray(Image.open(image_path).convert("RGB")).copy()
 					img[mask == 0, :] = 0
 
 					if mask.ndim == 2:
@@ -333,6 +337,8 @@ if __name__ == "__main__":
 
 	for f in out["frames"]:
 		f["transform_matrix"] = f["transform_matrix"].tolist()
+	if args.ply_file_path is not None:
+		out["ply_file_path"] = output_relative_path(args.ply_file_path)
 	print(nframes,"frames")
 	print(f"writing {OUT_PATH}")
 	with open(OUT_PATH, "w") as outfile:

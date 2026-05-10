@@ -145,7 +145,6 @@ def main():
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     counter = 0
 
-    # If skip is specified, move the video to that timestamp
     frames_to_skip = 0
     if skip > 0.0:
         seconds_per_frame = 1.0 / fps
@@ -185,7 +184,7 @@ def main():
 
             counter += 1
 
-        if max_frames is not None and counter >= max_frames:
+        if max_frames is not None and max_frames > 0 and counter >= max_frames:
             break
 
     cap.release()

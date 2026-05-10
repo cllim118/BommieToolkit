@@ -36,6 +36,7 @@ done
 output_bag="${output_folder}/calibration.bag"
 expected_camchain="${output_folder}/calibration-camchain.yaml"
 bag_input_folder="$(dirname "$images_folder_left")"
+mkdir -p "$output_folder"
 
 if [ "$(dirname "$images_folder_right")" != "$bag_input_folder" ]; then
   echo "images_folder_left and images_folder_right must share one parent folder for kalibr_bagcreater." >&2
@@ -45,6 +46,24 @@ fi
 if [ "$(basename "$images_folder_left")" != "cam0" ] || [ "$(basename "$images_folder_right")" != "cam1" ]; then
   echo "Kalibr expects camera folders named cam0 and cam1; got '$images_folder_left' and '$images_folder_right'." >&2
   exit 2
+fi
+
+has_calibration_images() {
+  local image_folder=$1
+  [ -d "$image_folder" ] || return 1
+  find "$image_folder" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) -print -quit | grep -q .
+}
+
+if [ "$create_bag" -eq 1 ]; then
+  if ! has_calibration_images "$images_folder_left"; then
+    echo "No calibration images found in '$images_folder_left'." >&2
+    exit 1
+  fi
+
+  if ! has_calibration_images "$images_folder_right"; then
+    echo "No calibration images found in '$images_folder_right'." >&2
+    exit 1
+  fi
 fi
 
 
@@ -79,7 +98,7 @@ else
   unset KALIBR_MANUAL_FOCAL_LENGTH_INIT
 fi
 
-"${kalibr_bin}/kalibr_calibrate_cameras" --target "$target" --models pinhole-radtan pinhole-radtan --topics /cam0/image_raw /cam1/image_raw --bag "$output_bag" --bag-freq "$freq" ${verbose_cmd}
+"${kalibr_bin}/kalibr_calibrate_cameras" --target "$target" --models pinhole-radtan pinhole-radtan --topics /cam0/image_raw /cam1/image_raw --bag "$output_bag" --bag-freq "$freq" --dont-show-report ${verbose_cmd}
 
 if [ ! -f "$expected_camchain" ]; then
   echo "Kalibr completed without producing expected camchain: $expected_camchain" >&2

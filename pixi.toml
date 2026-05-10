@@ -13,6 +13,43 @@ colmap2nerf = { cmd = "python ../scripts/colmap2nerf.py", cwd = "monkey_output" 
 extract_images_dev = "python scripts/vid2imgs_dev.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
 
+[tasks.gaussian-splat-pipeline]
+args = [
+  { arg = "output_dir", default = "monkey_output" },
+  { arg = "resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "video_left", default = "videos/monkey_left.MP4" },
+  { arg = "video_right", default = "videos/monkey_right.MP4" },
+  { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
+  { arg = "calibration_dir", default = "calibration_output" },
+  { arg = "calibration_resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "calibration_skip", default = "5.0" },
+  { arg = "calibration_max_frames", default = "0" },
+  { arg = "calibration_target", default = "files/april_10x6.yaml" },
+  { arg = "calibration_freq", default = "30" },
+  { arg = "vis", default = "viewer" },
+  { arg = "max_num_iterations", default = "30000" },
+  { arg = "device_type", default = "cuda", choices = ["cuda", "mps", "cpu"] },
+]
+inputs = [
+  "{{ video_left }}",
+  "{{ video_right }}",
+  "{{ calibration_target }}",
+  "scripts/vid2imgs.py",
+  "scripts/calibrate_stereo_rig.sh",
+  "scripts/convert_camchain_to_rig_config.py",
+  "scripts/match_images_by_ns.py",
+  "scripts/colmap2nerf.py",
+]
+outputs = [
+  "{{ calibration_dir }}/calibration-camchain.yaml",
+  "{{ calibration_dir }}/rig_config.json",
+  "{{ output_dir }}/transforms.json",
+  "{{ output_dir }}/sparse/0/mesh.ply",
+  "outputs/{{ output_dir }}/splatfacto/**/config.yml",
+]
+cmd = "pixi run -e kalibr calibrate-stereo-rig-from-videos {{ calibration_dir }} {{ calibration_resolution }} {{ video_left }} {{ video_right }} {{ calibration_skip }} {{ calibration_max_frames }} {{ calibration_target }} {{ calibration_freq }} && pixi run -e colmap reconstruct {{ output_dir }} {{ resolution }} {{ video_left }} {{ video_right }} {{ threshold_ns }} {{ skip }} {{ calibration_dir }}/calibration-camchain.yaml {{ calibration_dir }}/rig_config.json && pixi run -e nerfstudio train-splatfacto {{ output_dir }} {{ vis }} {{ max_num_iterations }} {{ device_type }}"
+
 [dependencies]
 python = "*"
 opencv = "*"
@@ -24,6 +61,7 @@ rerun-sdk = ">=0.21,<1"
 [environments]
 kalibr = {features = ["kalibr"], no-default-feature = true}
 colmap = {features = ["colmap"], no-default-feature = true}
+nerfstudio = {features = ["nerfstudio"], no-default-feature = true}
 uwsfm = {features = ["uwsfm"], no-default-feature = true}
 sam = {features = ["sam"], no-default-feature = true}
 
@@ -40,6 +78,71 @@ git-clone = {cmd = "git clone https://github.com/Tobias-Fischer/kalibr.git catki
 build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.20 -DCMAKE_CXX_STANDARD=14", cwd="catkin_ws", depends-on = ["git-clone"] }
 kalibr-calibrate-stereo-rig = {cmd = "./scripts/calibrate_stereo_rig.sh"}
 
+[feature.kalibr.tasks.extract-calibration-left]
+args = [
+  { arg = "calibration_dir", default = "calibration_output" },
+  { arg = "calibration_resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "video_left", default = "videos/cal_left.MP4" },
+  { arg = "calibration_skip", default = "5.0" },
+  { arg = "calibration_max_frames", default = "0" },
+]
+inputs = ["scripts/vid2imgs.py", "{{ video_left }}"]
+outputs = ["{{ calibration_dir }}/cam0/**/*"]
+cmd = "python scripts/vid2imgs.py --video {{ video_left }} --output {{ calibration_dir }}/cam0 --gray --resolution {{ calibration_resolution }} --skip {{ calibration_skip }} --max_frames {{ calibration_max_frames }}"
+
+[feature.kalibr.tasks.extract-calibration-right]
+args = [
+  { arg = "calibration_dir", default = "calibration_output" },
+  { arg = "calibration_resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "video_right", default = "videos/cal_right.MP4" },
+  { arg = "calibration_skip", default = "5.0" },
+  { arg = "calibration_max_frames", default = "0" },
+]
+inputs = ["scripts/vid2imgs.py", "{{ video_right }}"]
+outputs = ["{{ calibration_dir }}/cam1/**/*"]
+cmd = "python scripts/vid2imgs.py --video {{ video_right }} --output {{ calibration_dir }}/cam1 --gray --resolution {{ calibration_resolution }} --skip {{ calibration_skip }} --max_frames {{ calibration_max_frames }}"
+
+[feature.kalibr.tasks.calibrate-stereo-rig-from-videos]
+args = [
+  { arg = "calibration_dir", default = "calibration_output" },
+  { arg = "calibration_resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "video_left", default = "videos/cal_left.MP4" },
+  { arg = "video_right", default = "videos/cal_right.MP4" },
+  { arg = "calibration_skip", default = "5.0" },
+  { arg = "calibration_max_frames", default = "0" },
+  { arg = "calibration_target", default = "files/april_10x6.yaml" },
+  { arg = "calibration_freq", default = "30" },
+]
+depends-on = [
+  { task = "extract-calibration-left", args = [
+    { calibration_dir = "{{ calibration_dir }}" },
+    { calibration_resolution = "{{ calibration_resolution }}" },
+    { video_left = "{{ video_left }}" },
+    { calibration_skip = "{{ calibration_skip }}" },
+    { calibration_max_frames = "{{ calibration_max_frames }}" },
+  ] },
+  { task = "extract-calibration-right", args = [
+    { calibration_dir = "{{ calibration_dir }}" },
+    { calibration_resolution = "{{ calibration_resolution }}" },
+    { video_right = "{{ video_right }}" },
+    { calibration_skip = "{{ calibration_skip }}" },
+    { calibration_max_frames = "{{ calibration_max_frames }}" },
+  ] },
+]
+inputs = [
+  "scripts/calibrate_stereo_rig.sh",
+  "{{ calibration_target }}",
+  "{{ calibration_dir }}/cam0/**/*",
+  "{{ calibration_dir }}/cam1/**/*",
+]
+outputs = [
+  "{{ calibration_dir }}/calibration.bag",
+  "{{ calibration_dir }}/calibration-camchain.yaml",
+  "{{ calibration_dir }}/calibration-results-cam.txt",
+  "{{ calibration_dir }}/calibration-report-cam.pdf",
+]
+cmd = "./scripts/calibrate_stereo_rig.sh images_folder_left={{ calibration_dir }}/cam0 images_folder_right={{ calibration_dir }}/cam1 output_folder={{ calibration_dir }} verbose=0 create_bag=1 target={{ calibration_target }} freq={{ calibration_freq }}"
+
 [feature.kalibr.dependencies]
 python = "3.12.*"
 ros-noetic-desktop="*"
@@ -54,7 +157,7 @@ catkin_tools="*"
 rosdep="*"
 libboost-devel="*"
 tapi="*"
-suitesparse = "*"
+suitesparse = "7.*"
 tbb-devel="*"
 opencv="*"
 pip="*"
@@ -71,7 +174,8 @@ pillow = "*"
 ffmpeg-python = "*"
 ffmpeg = "*"
 exiftool = "*"
-eigen-abi-devel = "*"
+eigen = "*"
+eigen-abi-devel = "3.4.*"
 ros-dev-tools = "*"
 
 [feature.kalibr.pypi-dependencies]
@@ -193,16 +297,22 @@ args = [
   { arg = "output_dir", default = "monkey_output" },
   { arg = "resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
   { arg = "video_left", default = "videos/monkey_left.MP4" },
+  { arg = "skip", default = "5.0" },
 ]
-cmd = "python scripts/vid2imgs.py --video {{ video_left }} --output {{ output_dir }}/monkey_images_left --resolution {{ resolution }}"
+inputs = ["scripts/vid2imgs.py", "{{ video_left }}"]
+outputs = ["{{ output_dir }}/monkey_images_left/**/*"]
+cmd = "python scripts/vid2imgs.py --video {{ video_left }} --output {{ output_dir }}/monkey_images_left --resolution {{ resolution }} --skip {{ skip }}"
 
 [feature.colmap.tasks.extract-right]
 args = [
   { arg = "output_dir", default = "monkey_output" },
   { arg = "resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
+  { arg = "skip", default = "5.0" },
 ]
-cmd = "python scripts/vid2imgs.py --video {{ video_right }} --output {{ output_dir }}/monkey_images_right --resolution {{ resolution }}"
+inputs = ["scripts/vid2imgs.py", "{{ video_right }}"]
+outputs = ["{{ output_dir }}/monkey_images_right/**/*"]
+cmd = "python scripts/vid2imgs.py --video {{ video_right }} --output {{ output_dir }}/monkey_images_right --resolution {{ resolution }} --skip {{ skip }}"
 
 # Timestamp-based image sync
 [feature.colmap.tasks.sync-images]
@@ -212,18 +322,30 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
 ]
 depends-on = [
   { task = "extract-left", args = [
     { output_dir = "{{ output_dir }}" },
     { resolution = "{{ resolution }}" },
     { video_left = "{{ video_left }}" },
+    { skip = "{{ skip }}" },
   ] },
   { task = "extract-right", args = [
     { output_dir = "{{ output_dir }}" },
     { resolution = "{{ resolution }}" },
     { video_right = "{{ video_right }}" },
+    { skip = "{{ skip }}" },
   ] },
+]
+inputs = [
+  "scripts/match_images_by_ns.py",
+  "{{ output_dir }}/monkey_images_left/**/*",
+  "{{ output_dir }}/monkey_images_right/**/*",
+]
+outputs = [
+  "{{ output_dir }}/colmap_images/rig1/camera1/**/*",
+  "{{ output_dir }}/colmap_images/rig1/camera2/**/*",
 ]
 cmd = "python scripts/match_images_by_ns.py --images_folder_left {{ output_dir }}/monkey_images_left --images_folder_right {{ output_dir }}/monkey_images_right --colmap_folder_left {{ output_dir }}/colmap_images/rig1/camera1 --colmap_folder_right {{ output_dir }}/colmap_images/rig1/camera2 --threshold-ns {{ threshold_ns }}"
 
@@ -235,6 +357,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
 ]
 depends-on = [
   { task = "sync-images", args = [
@@ -243,9 +366,12 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
   ] },
 ]
-cmd = "colmap feature_extractor --image_path {{ output_dir }}/colmap_images --database_path {{ output_dir }}/database.db --ImageReader.single_camera 1 --ImageReader.single_camera_per_folder 1 --ImageReader.single_camera_per_image 0"
+inputs = ["{{ output_dir }}/colmap_images/**/*"]
+outputs = ["{{ output_dir }}/database_features.db"]
+cmd = "colmap feature_extractor --image_path {{ output_dir }}/colmap_images --database_path {{ output_dir }}/database_features.db --ImageReader.single_camera 1 --ImageReader.single_camera_per_folder 1 --ImageReader.single_camera_per_image 0 --SiftExtraction.use_gpu 0"
 
 [feature.colmap.tasks.rig-configurator]
 args = [
@@ -254,11 +380,18 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
 depends-on = [
   { task = "rig-config", args = [
+    { output_dir = "{{ output_dir }}" },
+    { resolution = "{{ resolution }}" },
+    { video_left = "{{ video_left }}" },
+    { video_right = "{{ video_right }}" },
+    { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
@@ -268,16 +401,42 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
   ] },
 ]
-cmd = "colmap rig_configurator --database_path {{ output_dir }}/database.db --rig_config_path {{ rig_config_path }}"
+inputs = ["{{ output_dir }}/database_features.db", "{{ rig_config_path }}"]
+outputs = ["{{ output_dir }}/database_rig.db"]
+cmd = "cp {{ output_dir }}/database_features.db {{ output_dir }}/database_rig.db && colmap rig_configurator --database_path {{ output_dir }}/database_rig.db --rig_config_path {{ rig_config_path }}"
 
 [feature.colmap.tasks.rig-config]
 args = [
+  { arg = "output_dir", default = "monkey_output" },
+  { arg = "resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
+  { arg = "video_left", default = "videos/monkey_left.MP4" },
+  { arg = "video_right", default = "videos/monkey_right.MP4" },
+  { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
-cmd = "python scripts/convert_camchain_to_rig_config.py {{ camchain_path }} {{ rig_config_path }}"
+depends-on = [
+  { task = "sync-images", args = [
+    { output_dir = "{{ output_dir }}" },
+    { resolution = "{{ resolution }}" },
+    { video_left = "{{ video_left }}" },
+    { video_right = "{{ video_right }}" },
+    { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
+  ] },
+]
+inputs = [
+  "scripts/convert_camchain_to_rig_config.py",
+  "{{ camchain_path }}",
+  "{{ output_dir }}/colmap_images/rig1/camera1/**/*",
+  "{{ output_dir }}/colmap_images/rig1/camera2/**/*",
+]
+outputs = ["{{ rig_config_path }}"]
+cmd = "python scripts/convert_camchain_to_rig_config.py {{ camchain_path }} {{ rig_config_path }} --image-dirs {{ output_dir }}/colmap_images/rig1/camera1 {{ output_dir }}/colmap_images/rig1/camera2"
 
 [feature.colmap.tasks.sequential-matcher]
 args = [
@@ -286,6 +445,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -296,15 +456,19 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
 ]
-cmd = "colmap sequential_matcher --database_path {{ output_dir }}/database.db"
+inputs = ["{{ output_dir }}/database_rig.db"]
+outputs = ["{{ output_dir }}/database.db"]
+cmd = "cp {{ output_dir }}/database_rig.db {{ output_dir }}/database.db && colmap sequential_matcher --database_path {{ output_dir }}/database.db --SiftMatching.use_gpu 0"
 
 [feature.colmap.tasks.mkdir-sparse]
 args = [{ arg = "output_dir", default = "monkey_output" }]
-cmd = "mkdir -p {{ output_dir }}/sparse"
+outputs = ["{{ output_dir }}/sparse/.keep"]
+cmd = "mkdir -p {{ output_dir }}/sparse && touch {{ output_dir }}/sparse/.keep"
 
 [feature.colmap.tasks.mapper]
 args = [
@@ -313,6 +477,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -323,12 +488,19 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
   { task = "mkdir-sparse", args = [{ output_dir = "{{ output_dir }}" }] },
 ]
-cmd = "colmap mapper --database_path {{ output_dir }}/database.db --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0 --image_path {{ output_dir }}/colmap_images --output_path {{ output_dir }}/sparse"
+inputs = ["{{ output_dir }}/database.db", "{{ output_dir }}/colmap_images/**/*"]
+outputs = [
+  "{{ output_dir }}/sparse/0/cameras.bin",
+  "{{ output_dir }}/sparse/0/images.bin",
+  "{{ output_dir }}/sparse/0/points3D.bin",
+]
+cmd = "colmap mapper --database_path {{ output_dir }}/database.db --Mapper.ba_refine_sensor_from_rig 0 --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0 --image_path {{ output_dir }}/colmap_images --output_path {{ output_dir }}/sparse"
 
 [feature.colmap.tasks.model-converter-txt]
 args = [
@@ -337,6 +509,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -347,9 +520,20 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
+]
+inputs = [
+  "{{ output_dir }}/sparse/0/cameras.bin",
+  "{{ output_dir }}/sparse/0/images.bin",
+  "{{ output_dir }}/sparse/0/points3D.bin",
+]
+outputs = [
+  "{{ output_dir }}/sparse/0/cameras.txt",
+  "{{ output_dir }}/sparse/0/images.txt",
+  "{{ output_dir }}/sparse/0/points3D.txt",
 ]
 cmd = "colmap model_converter --input_path {{ output_dir }}/sparse/0 --output_path {{ output_dir }}/sparse/0 --output_type TXT"
 
@@ -360,6 +544,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -370,10 +555,17 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
 ]
+inputs = [
+  "{{ output_dir }}/sparse/0/cameras.bin",
+  "{{ output_dir }}/sparse/0/images.bin",
+  "{{ output_dir }}/sparse/0/points3D.bin",
+]
+outputs = ["{{ output_dir }}/sparse/0/mesh.ply"]
 cmd = "colmap model_converter --input_path {{ output_dir }}/sparse/0 --output_path {{ output_dir }}/sparse/0/mesh.ply --output_type PLY"
 
 # colmap2nerf
@@ -384,6 +576,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -394,11 +587,20 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
 ]
-cmd = "python scripts/colmap2nerf.py --text {{ output_dir }}/sparse/0 --images {{ output_dir }}/colmap_images --out {{ output_dir }}/transforms.json --keep_colmap_coords"
+inputs = [
+  "scripts/colmap2nerf.py",
+  "{{ output_dir }}/colmap_images/**/*",
+  "{{ output_dir }}/sparse/0/cameras.txt",
+  "{{ output_dir }}/sparse/0/images.txt",
+  "{{ output_dir }}/sparse/0/points3D.txt",
+]
+outputs = ["{{ output_dir }}/transforms.json"]
+cmd = "python scripts/colmap2nerf.py --text {{ output_dir }}/sparse/0 --images {{ output_dir }}/colmap_images --out {{ output_dir }}/transforms.json --keep_colmap_coords --ply_file_path {{ output_dir }}/sparse/0/mesh.ply"
 
 # End-to-end pipeline: videos to transforms.json (nerfstudio-ready)
 [feature.colmap.tasks.reconstruct]
@@ -408,6 +610,7 @@ args = [
   { arg = "video_left", default = "videos/monkey_left.MP4" },
   { arg = "video_right", default = "videos/monkey_right.MP4" },
   { arg = "threshold_ns", default = "5000000" },
+  { arg = "skip", default = "5.0" },
   { arg = "camchain_path", default = "calibration_output/calibration-camchain.yaml" },
   { arg = "rig_config_path", default = "calibration_output/rig_config.json" },
 ]
@@ -418,6 +621,7 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
@@ -427,10 +631,90 @@ depends-on = [
     { video_left = "{{ video_left }}" },
     { video_right = "{{ video_right }}" },
     { threshold_ns = "{{ threshold_ns }}" },
+    { skip = "{{ skip }}" },
     { camchain_path = "{{ camchain_path }}" },
     { rig_config_path = "{{ rig_config_path }}" },
   ] },
 ]
+inputs = [
+  "{{ video_left }}",
+  "{{ video_right }}",
+  "{{ camchain_path }}",
+  "{{ rig_config_path }}",
+  "scripts/vid2imgs.py",
+  "scripts/match_images_by_ns.py",
+  "scripts/convert_camchain_to_rig_config.py",
+  "scripts/colmap2nerf.py",
+]
+outputs = [
+  "{{ output_dir }}/transforms.json",
+  "{{ output_dir }}/sparse/0/mesh.ply",
+]
+cmd = "test -f {{ output_dir }}/transforms.json && test -f {{ output_dir }}/sparse/0/mesh.ply"
+
+########################################################################################################################
+########################################################################################################################
+# nerfstudio feature
+[feature.nerfstudio]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[feature.nerfstudio.dependencies]
+git = "*"
+
+[feature.nerfstudio.tasks]
+
+[feature.nerfstudio.tasks.nerfstudio-clone]
+outputs = ["nerfstudio/pixi.toml"]
+cmd = "test -d nerfstudio || git clone https://github.com/Tobias-Fischer/nerfstudio.git nerfstudio"
+
+[feature.nerfstudio.tasks.nerfstudio-post-install]
+depends-on = ["nerfstudio-clone"]
+inputs = ["nerfstudio/pixi.toml", "nerfstudio/pyproject.toml"]
+outputs = ["nerfstudio/.bommie/post-install.stamp"]
+cmd = "mkdir -p nerfstudio/.bommie && touch nerfstudio/.bommie/post-install.stamp"
+
+[feature.nerfstudio.tasks.train-splatfacto]
+args = [
+  { arg = "output_dir", default = "monkey_output" },
+  { arg = "vis", default = "viewer" },
+  { arg = "max_num_iterations", default = "30000" },
+  { arg = "device_type", default = "cuda", choices = ["cuda", "mps", "cpu"] },
+]
+depends-on = ["nerfstudio-post-install"]
+inputs = [
+  "nerfstudio/pixi.toml",
+  "{{ output_dir }}/transforms.json",
+  "{{ output_dir }}/colmap_images/**/*",
+  "{{ output_dir }}/sparse/0/mesh.ply",
+]
+outputs = ["outputs/{{ output_dir }}/splatfacto/**/config.yml"]
+cmd = "pixi run --manifest-path nerfstudio/pixi.toml ns-train splatfacto --data {{ output_dir }} --vis {{ vis }} --max-num-iterations {{ max_num_iterations }} --machine.device_type {{ device_type }}"
+
+[feature.nerfstudio.tasks.train-splatfacto-masked]
+args = [
+  { arg = "output_dir", default = "monkey_output" },
+  { arg = "vis", default = "viewer" },
+  { arg = "max_num_iterations", default = "30000" },
+  { arg = "device_type", default = "cuda", choices = ["cuda", "mps", "cpu"] },
+]
+depends-on = ["nerfstudio-post-install"]
+inputs = [
+  "nerfstudio/pixi.toml",
+  "{{ output_dir }}/transforms.json",
+  "{{ output_dir }}/colmap_images/**/*",
+  "{{ output_dir }}/sparse/0/mesh.ply",
+]
+outputs = ["outputs/{{ output_dir }}/splatfacto/**/config.yml"]
+cmd = "pixi run --manifest-path nerfstudio/pixi.toml ns-train splatfacto --data {{ output_dir }} --vis {{ vis }} --max-num-iterations {{ max_num_iterations }} --machine.device_type {{ device_type }}"
+
+[feature.nerfstudio.tasks.view-splatfacto]
+args = [
+  { arg = "config_path", default = "outputs/monkey_output/splatfacto/latest/config.yml" },
+]
+depends-on = ["nerfstudio-post-install"]
+inputs = ["{{ config_path }}"]
+cmd = "pixi run --manifest-path nerfstudio/pixi.toml ns-viewer --load-config {{ config_path }}"
 
 ########################################################################################################################
 ########################################################################################################################
