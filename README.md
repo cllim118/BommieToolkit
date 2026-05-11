@@ -1,6 +1,7 @@
 <div align="center">
     <h1>BommieToolkit</h1>
     <a href="https://github.com/BommieToolkit/BommieToolkit"><img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" /></a>
+    <a href="https://github.com/BommieToolkit/BommieToolkit"><img src="https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white" /></a>
     <br />
 </div>
 

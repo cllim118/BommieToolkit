@@ -144,7 +144,7 @@ def main():
 
             counter += 1
 
-        if max_frames is not None and counter >= max_frames:
+        if max_frames is not None and counter >= max_frames and max_frames > 0:
             break
     
     cap.release()

@@ -2,8 +2,10 @@
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 
+from PIL import Image
 import yaml 
 
 
@@ -58,7 +60,47 @@ def topic_to_prefix(topic: str) -> str:
     return parts[0] + "/"
 
 
-def yaml_to_rig_config(yaml_path: Path, json_path: Path):
+def first_image_size(image_dir: Path):
+    if image_dir is None:
+        return None
+    if not image_dir.is_dir():
+        raise FileNotFoundError(f"Image directory not found for rig scaling: {image_dir}")
+
+    image_paths = sorted(
+        p for p in image_dir.iterdir()
+        if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+    )
+    if not image_paths:
+        raise FileNotFoundError(f"No images found for rig scaling in: {image_dir}")
+
+    with Image.open(image_paths[0]) as image:
+        return image.size
+
+
+def scaled_camera_params(cam_data, target_size=None):
+    intrinsics = list(cam_data["intrinsics"])  # [fx, fy, cx, cy]
+    if target_size is not None:
+        source_width, source_height = cam_data["resolution"]
+        target_width, target_height = target_size
+        scale_x = target_width / source_width
+        scale_y = target_height / source_height
+        intrinsics = [
+            intrinsics[0] * scale_x,
+            intrinsics[1] * scale_y,
+            intrinsics[2] * scale_x,
+            intrinsics[3] * scale_y,
+        ]
+
+    dist = cam_data["distortion_coeffs"]  # [k1, k2, p1, p2] for radtan
+    return intrinsics + list(dist)
+
+
+def yaml_to_rig_config(yaml_path: Path, json_path: Path, image_dirs=None):
+    if not yaml_path.is_file():
+        raise FileNotFoundError(
+            f"Camchain file not found: {yaml_path}. Run kalibr calibration first or pass camchain_path."
+        )
+
     with yaml_path.open("r") as f:
         calib = yaml.safe_load(f)
 
@@ -68,22 +110,20 @@ def yaml_to_rig_config(yaml_path: Path, json_path: Path):
         key=lambda k: int(k[3:])  # assumes 'cam<number>'
     )
 
+    image_dirs = image_dirs or []
+    image_sizes = [first_image_size(path) for path in image_dirs]
     cameras_out = []
 
     for idx, cam_key in enumerate(cam_keys):
         cam_data = calib[cam_key]
 
-        intrinsics = cam_data["intrinsics"]  # [fx, fy, cx, cy]
-        dist = cam_data["distortion_coeffs"]  # [k1, k2, p1, p2] for radtan
-
-        # Map to OPENCV-style [fx, fy, cx, cy, k1, k2, p1, p2]
-        camera_params = list(intrinsics) + list(dist)
+        target_size = image_sizes[idx] if idx < len(image_sizes) else None
 
         # Basic camera dict
         cam_out = {
             "image_prefix": f"rig1/camera{idx+1}/",
             "camera_model_name": "OPENCV",
-            "camera_params": camera_params,
+            "camera_params": scaled_camera_params(cam_data, target_size),
         }
 
         # First camera is reference sensor
@@ -104,6 +144,7 @@ def yaml_to_rig_config(yaml_path: Path, json_path: Path):
 
     rig_config = [{"cameras": cameras_out}]
 
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w") as f:
         json.dump(rig_config, f, indent=2)
 
@@ -122,9 +163,20 @@ def main():
         type=Path,
         help="Output rig_config.json path",
     )
+    ap.add_argument(
+        "--image-dirs",
+        nargs="*",
+        type=Path,
+        default=None,
+        help="Optional image directories, in camchain order, used to scale intrinsics to extracted image size.",
+    )
     args = ap.parse_args()
 
-    yaml_to_rig_config(args.yaml_in, args.json_out)
+    try:
+        yaml_to_rig_config(args.yaml_in, args.json_out, args.image_dirs)
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
