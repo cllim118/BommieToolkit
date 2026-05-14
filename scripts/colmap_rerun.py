@@ -25,12 +25,17 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Mapping
 
+import sys
+
 import cv2
 import numpy as np
 import numpy.typing as npt
+from plyfile import PlyData
 
 import rerun as rr
 import rerun.blueprint as rrb
+
+_3DGS2PC_DIR = Path(__file__).parent.parent / "3dgs2pc"
 
 # ---------------------------------------------------------------------------
 # COLMAP data structures (adapted from the official colmap/scripts/python)
@@ -303,11 +308,91 @@ Visualized with [Rerun](https://rerun.io).
 """.strip()
 
 
+def log_gaussian_splat(splat_path: Path) -> None:
+    """Parse a point-cloud PLY (exported from Gaussian Splats) and log as Points3D."""
+    print(f"Reading point cloud from {splat_path} …")
+    v = PlyData.read(str(splat_path))["vertex"]
+    props = {p.name for p in v.properties}
+    print(f"  {len(v)} points")
+
+    positions = np.column_stack([v["x"], v["y"], v["z"]]).astype(np.float32)
+
+    # Support both 'red/green/blue' and 'r/g/b' color naming conventions
+    if {"red", "green", "blue"} <= props:
+        colors = np.column_stack([v["red"], v["green"], v["blue"]]).astype(np.uint8)
+    elif {"r", "g", "b"} <= props:
+        colors = np.column_stack([v["r"], v["g"], v["b"]]).astype(np.uint8)
+    else:
+        colors = None
+
+    rr.log("/splats/pointcloud", rr.Points3D(positions, colors=colors), static=True)
+
+
+def load_3dgs_renderer(gs_path: Path):
+    """Load a 3DGS PLY/splat file and return a configured CUDA GaussianPCRasterizer."""
+    import torch
+    if str(_3DGS2PC_DIR) not in sys.path:
+        sys.path.insert(0, str(_3DGS2PC_DIR))
+    from gauss_dataloader import load_gaussians
+    from gauss_handler import Gaussians
+    from gauss_render import get_renderer
+
+    print(f"Loading Gaussian splat for rendering from {gs_path} …")
+    xyz, scales, rots, colours, opacities, shs = load_gaussians(str(gs_path))
+    gaussians = Gaussians(xyz, scales, rots, colours, opacities, shs)
+    gaussians.validate_covariances()
+    print(f"  {gaussians.xyz.shape[0]} Gaussians loaded")
+    # opacities must be (N, 1) for the rasterizer
+    return get_renderer("cuda", gaussians.xyz, torch.unsqueeze(gaussians.opacities, 1),
+                        gaussians.colours, gaussians.covariances)
+
+
+def log_rendered_3dgs(
+    renderer,
+    camera: Camera,
+    image: Image,
+    resize: tuple[int, int] | None,
+) -> None:
+    """Render the Gaussian splat from the current COLMAP camera and log to Rerun."""
+    import torch
+    if str(_3DGS2PC_DIR) not in sys.path:
+        sys.path.insert(0, str(_3DGS2PC_DIR))
+    from camera_handler import get_camera
+
+    focal, _ = camera_focal_and_principal(camera)
+    w, h = camera.width, camera.height
+    if resize:
+        scale = np.array([resize[0] / w, resize[1] / h])
+        focal = focal * scale
+        w, h = resize
+
+    # COLMAP stores world-to-cam; get_camera expects cam-to-world
+    R = image.qvec2rotmat()
+    t = image.tvec
+    c2w = np.eye(4, dtype=np.float32)
+    c2w[:3, :3] = R.T
+    c2w[:3, 3] = -(R.T @ t)
+    c2w_tensor = torch.tensor(c2w, device="cuda")
+
+    # get_camera("cuda") was written for nerfstudio transforms (OpenGL: Y up, Z backward)
+    # and flips Y/Z internally to convert to OpenCV. COLMAP is already OpenCV (Y down, Z
+    # forward), so pre-flip to OpenGL first so the internal flip cancels it out correctly.
+    c2w_for_renderer = c2w_tensor.clone()
+    c2w_for_renderer[:, 1:3] = -c2w_for_renderer[:, 1:3]
+    gs_cam = get_camera("cuda", c2w_for_renderer, [w, h, float(focal[0]), float(focal[1])])
+    render, *_ = renderer(gs_cam)
+    # CUDA rasterizer returns [3, H, W]; convert to [H, W, 3] for Rerun
+    rgb_np = (render.permute(1, 2, 0).cpu().numpy() * 255).clip(0, 255).astype(np.uint8)
+    rr.log("splat/render", rr.Image(rgb_np))
+
+
 def log_reconstruction(
     sparse_dir: Path,
     images_dir: Path | None,
     filter_output: bool,
     resize: tuple[int, int] | None,
+    splat_path: Path | None = None,
+    gs_path: Path | None = None,
 ) -> None:
     print(f"Reading COLMAP model from {sparse_dir} …")
     cameras, images, points3D = read_model(sparse_dir)
@@ -327,7 +412,11 @@ def log_reconstruction(
     
     full_pointcloud = np.array([pt.xyz for pt in points3D.values()]) if points3D else np.zeros((0, 3))
     full_colors     = np.array([pt.rgb for pt in points3D.values()], dtype=np.uint8) if points3D else np.zeros((0, 3), dtype=np.uint8)
-    rr.log("Full Model", rr.Points3D(full_pointcloud, colors=full_colors), static=True)
+    rr.log("FullModel", rr.Points3D(full_pointcloud, colors=full_colors), static=True)
+    if splat_path is not None:
+        log_gaussian_splat(splat_path)
+
+    renderer = load_3dgs_renderer(gs_path) if gs_path is not None else None
 
     for image in sorted(images.values(), key=lambda im: im.name):
         # Determine frame index from the numeric suffix in the image name
@@ -406,6 +495,9 @@ def log_reconstruction(
         # Reprojected keypoints
         rr.log("camera/image/keypoints", rr.Points2D(visible_xys, colors=[34, 138, 167]))
 
+        if renderer is not None:
+            log_rendered_3dgs(renderer, camera, image, resize)
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -424,6 +516,14 @@ def main() -> None:
         help="Path to the directory containing the original images (optional).",
     )
     parser.add_argument(
+        "--splat_path", type=Path, default=None,
+        help="Path to a point-cloud PLY (converted from Gaussian splats) to visualize as static Points3D.",
+    )
+    parser.add_argument(
+        "--gs_path", type=Path, default=None,
+        help="Path to an original 3DGS PLY/splat file to render per-frame using the CUDA Gaussian rasterizer.",
+    )
+    parser.add_argument(
         "--unfiltered", action="store_true",
         help="Disable point-cloud filtering (show all points, including noisy ones).",
     )
@@ -439,13 +539,17 @@ def main() -> None:
         w, h = args.resize.split("x")
         resize = (int(w), int(h))
 
+    bottom_row_views = [
+        rrb.TextDocumentView(name="README", origin="/description"),
+        rrb.Spatial2DView(name="Camera", origin="/camera/image"),
+        rrb.TimeSeriesView(origin="/plot"),
+    ]
+    if args.gs_path is not None:
+        bottom_row_views.insert(2, rrb.Spatial2DView(name="Splat render", origin="/splat/render"))
+
     blueprint = rrb.Vertical(
-        rrb.Spatial3DView(name="3D", origin="/", line_grid=False),
-        rrb.Horizontal(
-            rrb.TextDocumentView(name="README", origin="/description"),
-            rrb.Spatial2DView(name="Camera", origin="/camera/image"),
-            rrb.TimeSeriesView(origin="/plot"),
-        ),
+        rrb.Spatial3DView(name="3D", origin="/"),
+        rrb.Horizontal(*bottom_row_views),
         row_shares=[3, 2],
     )
 
@@ -455,6 +559,8 @@ def main() -> None:
         images_dir=args.images_dir,
         filter_output=not args.unfiltered,
         resize=resize,
+        splat_path=args.splat_path,
+        gs_path=args.gs_path,
     )
     rr.script_teardown(args)
 

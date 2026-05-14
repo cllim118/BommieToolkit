@@ -762,3 +762,7 @@ cmd = "mkdir -p 3dgs2pc/.bommie && touch 3dgs2pc/.bommie/post-install.stamp"
 [feature.splatpcl.tasks.convert-splats]
 depends-on = ["splat2pointcloud-post-install"]
 cmd = "pixi run --manifest-path 3dgs2pc/pixi.toml convert-splats"
+
+[feature.splatpcl.tasks.visualize_colmap_3dgs]
+depends-on = ["splat2pointcloud-post-install"]
+cmd = "pixi run --manifest-path 3dgs2pc/pixi.toml visualize-colmap"
