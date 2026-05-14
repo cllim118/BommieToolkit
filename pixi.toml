@@ -12,6 +12,7 @@ get_rig_config_json= "python scripts/convert_camchain_to_rig_config.py"
 colmap2nerf = { cmd = "python ../scripts/colmap2nerf.py", cwd = "monkey_output" }
 extract_images_dev = "python scripts/vid2imgs_dev.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
+transform_splats = "python scripts/transform_splats.py"
 
 [tasks.gaussian-splat-pipeline]
 args = [
@@ -57,6 +58,7 @@ tqdm = "*"
 pyyaml = "*"
 pillow = ">=12.2.0,<13"
 rerun-sdk = ">=0.21,<1"
+plyfile = "*"
 
 [environments]
 kalibr = {features = ["kalibr"], no-default-feature = true}
@@ -728,3 +730,4 @@ cuda = "12.4"
 
 [feature.uwsfm.dependencies]
 refractive_colmap = "==3.9.0"
+calibmar = "*"

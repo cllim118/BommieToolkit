@@ -219,10 +219,18 @@ In case the masking has been performed previously on the images, and we are work
 ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output --vis viewer --pipeline.model.background_color "random"
 ```
 
-
 ```bash
 ns-viewer --load-config outputs/monkey_output/splatfacto/2025-11-19_105617/config.yml
 ```
+Nerfstudio normalizes coordinates to make the training process go faster. So we need to apply the inverse of a nerfstudio dataparser transform to the splat to go back to our metric scale. 
+
+```bash
+pixi shell # (default one)
+pix run transform_splats --splat_path  path/to/splat.ply \
+                         --transform_path path/to/dataparser_transforms.json \
+                         --output_path path/to/splat_original.ply 
+```
+
 
 "ply_file_path" : "/home/alejandro/BommieToolkit/monkey_output/sparse/0/mesh.ply",
 
