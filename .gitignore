@@ -9,3 +9,7 @@ calibration_output/
 videos/*
 catkin_ws/
 *output*
+sam3/
+nerfstudio/
+3dgs2pc/
+.gradio/
