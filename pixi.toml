@@ -66,6 +66,7 @@ colmap = {features = ["colmap"], no-default-feature = true}
 nerfstudio = {features = ["nerfstudio"], no-default-feature = true}
 uwsfm = {features = ["uwsfm"], no-default-feature = true}
 sam = {features = ["sam"], no-default-feature = true}
+splatpcl = {features = ["splatpcl"], no-default-feature = true}
 
 ########################################################################################################################
 ########################################################################################################################
@@ -731,3 +732,33 @@ cuda = "12.4"
 [feature.uwsfm.dependencies]
 refractive_colmap = "==3.9.0"
 calibmar = "*"
+
+
+########################################################################################################################
+########################################################################################################################
+# splat2pointcloud feature
+[feature.splatpcl]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[feature.splatpcl.dependencies]
+git = "*"
+
+[feature.splatpcl.tasks]
+
+
+[feature.splatpcl.tasks.splat2pointcloud-clone]
+outputs = ["3dgs2pc/pixi.toml"]
+cmd = "test -d 3dgs2pc || git clone -b bommie_toolkit https://github.com/EmilioOlivastri/3DGS-to-PC 3dgs2pc"
+
+
+[feature.splatpcl.tasks.splat2pointcloud-post-install]
+depends-on = ["splat2pointcloud-clone"]
+inputs = ["3dgs2pc/pixi.toml"]
+outputs = ["3dgs2pc/.bommie/post-install.stamp"]
+cmd = "mkdir -p 3dgs2pc/.bommie && touch 3dgs2pc/.bommie/post-install.stamp"
+
+
+[feature.splatpcl.tasks.convert-splats]
+depends-on = ["splat2pointcloud-post-install"]
+cmd = "pixi run --manifest-path 3dgs2pc/pixi.toml convert-splats"
