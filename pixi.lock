@@ -2958,7 +2958,7 @@ environments:
     - url: https://conda.anaconda.org/emilioolivastri/
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/emilioolivastri/linux-64/calibmar-1.0.0-cuda_124h32f409e_0.conda
+      - conda: https://conda.anaconda.org/emilioolivastri/linux-64/calibmar-1.1.0-cuda_124h32f409e_0.conda
       - conda: https://conda.anaconda.org/emilioolivastri/linux-64/refractive_colmap-3.9.0-cuda_124h32f409e_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://prefix.dev/conda-forge/linux-64/alsa-lib-1.2.15.3-hb03c661_0.conda
@@ -16583,9 +16583,9 @@ packages:
   purls: []
   size: 99425
   timestamp: 1719242141755
-- conda: https://conda.anaconda.org/emilioolivastri/linux-64/calibmar-1.0.0-cuda_124h32f409e_0.conda
-  sha256: 07afadb5b48890bce221b14b2775a77f4ff3d1dfb691a4a243656b6d7a944353
-  md5: e16c6e1cb803faaeeebe822f8a17eb1d
+- conda: https://conda.anaconda.org/emilioolivastri/linux-64/calibmar-1.1.0-cuda_124h32f409e_0.conda
+  sha256: 831a004fbc8da9fd1f407e0bdc151d6abca3b889bd6205eb70634e7da4e58608
+  md5: f6f4627d3829f5cedec83ca1761b34a2
   depends:
   - flann
   - __cuda >=12.4
@@ -16606,19 +16606,13 @@ packages:
   - libstdcxx >=14
   - libgcc >=14
   - _openmp_mutex >=4.5
-  - libcurand >=10.3.5.147,<11.0a0
-  - libopengl >=1.7.0,<2.0a0
-  - openimageio >=2.5.18.0,<2.6.0a0
-  - glog >=0.7.1,<0.8.0a0
-  - metis >=5.1.0,<5.1.1.0a0
-  - qt-main >=5.15.15,<5.16.0a0
-  - xorg-libxext >=1.3.7,<2.0a0
-  - xorg-libice >=1.1.2,<2.0a0
-  - xorg-libxrender >=0.9.12,<0.10.0a0
-  - freeimage >=3.18.0,<3.19.0a0
-  - lz4-c >=1.10.0,<1.11.0a0
-  - libgl >=1.7.0,<2.0a0
+  - gmp >=6.3.0,<7.0a0
+  - ceres-solver >=2.2.0,<2.3.0a0
+  - eigen >=3.4.0,<3.4.1.0a0
+  - libxcb >=1.17.0,<2.0a0
+  - xorg-libxfixes >=6.0.2,<7.0a0
   - xorg-libxdmcp >=1.1.5,<2.0a0
+  - poselib >=2.0.4,<2.0.5.0a0
   - libsuitesparseconfig >=7.10.1,<8.0a0
   - libamd >=3.3.3,<4.0a0
   - libbtf >=2.3.2,<3.0a0
@@ -16635,28 +16629,34 @@ packages:
   - libspex >=3.2.3,<4.0a0
   - libspqr >=4.3.4,<5.0a0
   - suitesparse >=7.10.1,<8.0a0
-  - xorg-libxfixes >=6.0.2,<7.0a0
-  - libcblas >=3.9.0,<4.0a0
-  - gflags >=2.2.2,<2.3.0a0
-  - xorg-libsm >=1.2.6,<2.0a0
-  - libxcb >=1.17.0,<2.0a0
-  - libboost >=1.88.0,<1.89.0a0
   - glew >=2.3.0,<2.4.0a0
-  - cuda-cudart >=12.4.127,<13.0a0
-  - xorg-libx11 >=1.8.13,<2.0a0
-  - libglu >=9.0.3,<9.1.0a0
-  - poselib >=2.0.4,<2.0.5.0a0
-  - libblas >=3.9.0,<4.0a0
+  - xorg-libxrender >=0.9.12,<0.10.0a0
+  - libgl >=1.7.0,<2.0a0
+  - libboost >=1.88.0,<1.89.0a0
+  - glog >=0.7.1,<0.8.0a0
+  - metis >=5.1.0,<5.1.1.0a0
+  - libcurand >=10.3.5.147,<11.0a0
+  - xorg-libsm >=1.2.6,<2.0a0
+  - xorg-libxext >=1.3.7,<2.0a0
   - flann >=1.9.2,<1.9.3.0a0
-  - ceres-solver >=2.2.0,<2.3.0a0
-  - eigen >=3.4.0,<3.4.1.0a0
+  - xorg-libice >=1.1.2,<2.0a0
+  - lz4-c >=1.10.0,<1.11.0a0
+  - xorg-libx11 >=1.8.13,<2.0a0
+  - libblas >=3.9.0,<4.0a0
+  - cuda-cudart >=12.4.127,<13.0a0
   - libsqlite >=3.53.1,<4.0a0
-  - xorg-libxau >=1.0.12,<2.0a0
   - eigen-abi >=3.4.0.100,<3.4.0.101.0a0
-  - gmp >=6.3.0,<7.0a0
+  - openimageio >=2.5.18.0,<2.6.0a0
+  - libcblas >=3.9.0,<4.0a0
+  - libglu >=9.0.3,<9.1.0a0
+  - xorg-libxau >=1.0.12,<2.0a0
+  - libopengl >=1.7.0,<2.0a0
+  - gflags >=2.2.2,<2.3.0a0
+  - qt-main >=5.15.15,<5.16.0a0
+  - freeimage >=3.18.0,<3.19.0a0
   license: BSD-3-Clause
-  size: 2784864
-  timestamp: 1778474356747
+  size: 2784880
+  timestamp: 1779320476927
 - conda: https://conda.anaconda.org/emilioolivastri/linux-64/refractive_colmap-3.9.0-cuda_124h32f409e_0.conda
   sha256: 821b55a1d568b4d9276f31c224200e2b8f42a9dc40a6ca77ddeedb0962518814
   md5: 8cafb9d5e8d096cbd393009111495a18
