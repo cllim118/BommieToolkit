@@ -265,9 +265,8 @@ if __name__ == "__main__":
 				frame = {"file_path":name,"sharpness":b,"transform_matrix": c2w}
 				if MASK_FOLDER is not None:
 					# Apply the masking to the image and add alpha channel
-					mask_rel = os.path.relpath(MASK_FOLDER)
 					base_name = '_'.join(elems[9:]).rsplit('.', 1)[0]
-					mask_name = str(f"./{mask_rel}/{base_name}.png")
+					mask_name = str(f"{MASK_FOLDER}/{base_name}.png")
 					
 					mask = np.asarray(Image.open(mask_name).convert("L")).copy()
 					img = np.asarray(Image.open(image_path).convert("RGB")).copy()
@@ -278,9 +277,12 @@ if __name__ == "__main__":
 
 					img_with_alpha = np.concatenate((img, mask), axis=-1)
 					img_with_alpha = Image.fromarray(img_with_alpha.astype(np.uint8), mode="RGBA")
-					masked_img_path = str(f"./masked_images/{base_name}.png")
-					img_with_alpha.save(masked_img_path)
-					frame["file_path"] = masked_img_path
+					relative_masked_img_path = str(f"./images/masked_images/{base_name}.png")
+					
+					masked_img_absolute_path = os.path.join(Path(MASK_FOLDER).parent, f"masked_images/{base_name}.png")
+					Path(masked_img_absolute_path).parent.mkdir(parents=True, exist_ok=True)
+					img_with_alpha.save(masked_img_absolute_path)
+					frame["file_path"] = relative_masked_img_path
 
 				if len(cameras) != 1:
 					frame.update(cameras[int(elems[8])])
