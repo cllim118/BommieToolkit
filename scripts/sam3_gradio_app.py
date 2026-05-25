@@ -157,7 +157,11 @@ def run_model(masks_parent_path):
             if mask.ndim != 2:
                 mask = mask.reshape(frame.shape[0], frame.shape[1])
             mask_img = Image.fromarray((mask*255).astype(np.uint8))
-            mask_filename = os.path.join(masks_output_folder, f"{base_name}.png") 
+            # Resize mask to original image size to undo mp4v codec even-dimension truncation
+            orig_w, orig_h = pil_frame.size
+            if mask_img.size != (orig_w, orig_h):
+                mask_img = mask_img.resize((orig_w, orig_h), Image.NEAREST)
+            mask_filename = os.path.join(masks_output_folder, f"{base_name}.png")
             mask_img.save(mask_filename)
             pil_frame = Image.blend(pil_frame, mask_img.convert("RGB").resize(pil_frame.size), alpha=0.5)
         gallery_imgs.append(pil_frame)
