@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # Inputs
-freq=30.0
-target="files/april_10x6.yaml"
-output_folder="calibration_output"
-images_folder_left="${output_folder}/cam0"
-images_folder_right="${output_folder}/cam1"
-verbose=0
-create_bag=1
-manual_focal_length_init="${KALIBR_MANUAL_FOCAL_LENGTH_INIT:-0}"
+freq=""
+target=""
+output_folder=""
+images_folder_left=""
+images_folder_right=""
+verbose=""
+create_bag=""
+manual_focal_length_init=""
 
 # Check inputs
 split_and_assign() {
@@ -17,7 +17,7 @@ split_and_assign() {
   local key=$(echo $input | cut -d'=' -f1)
   local value=$(echo $input | cut -d'=' -f2-)
   case "$key" in
-    freq|target|output_folder|images_folder_left|images_folder_right|verbose|create_bag|manual_focal_length_init)
+    output_folder|freq|target|images_folder_left|images_folder_right|verbose|create_bag|manual_focal_length_init)
       printf -v "$key" '%s' "$value"
       ;;
     *)
@@ -31,6 +31,16 @@ split_and_assign() {
 for ((i=1; i<=$#; i++)); do
     split_and_assign "${!i}"
 done
+
+freq="${freq:-30.0}"
+target="${target:-files/april_10x6.yaml}"
+output_folder="${output_folder:-calibration_ws}"
+images_folder_left="${images_folder_left:-${output_folder}/images/synced/cam0}"
+images_folder_right="${images_folder_right:-${output_folder}/images/synced/cam1}"
+verbose="${verbose:-0}"
+create_bag="${create_bag:-1}"
+manual_focal_length_init="${KALIBR_MANUAL_FOCAL_LENGTH_INIT:-0}"
+
 
 # Create folder structure
 output_bag="${output_folder}/calibration.bag"
