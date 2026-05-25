@@ -40,7 +40,8 @@ pc colmap rig_configurator --database_path ${WS}/database.db --rig_config_path $
 
 pc colmap exhaustive_matcher --database_path ${WS}/database.db
 
-mkdir ${WS}/sparse
+# NEED TO HANDLE CASE IN WHICH THIS FOLDER ALREADY EXISTS
+mkdir -p ${WS}/sparse
 
 mapper_args=(
   --database_path ${WS}/database.db
@@ -56,7 +57,7 @@ mapper_args=(
 pc colmap mapper "${mapper_args[@]}"
 
 # EXTRACTING COLMAP RESULTS IN TXT FOR CONVERSION TO NERF/SPLAT FORMAT
-mkdir ${WS}/sparse/0_txt
+mkdir -p ${WS}/sparse/0_txt
 modconv_args=(
   --input_path ${WS}/sparse/0
   --output_path ${WS}/sparse/0_txt
