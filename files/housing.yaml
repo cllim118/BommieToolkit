@@ -1,0 +1,8 @@
+# GoPro Housing Example
+housing: "FLATPORT"
+glass_thickness: 0.002 # Known 
+distance_to_glass: 0.005 # Initial Guess
+
+glass_refractive_index: 1.492 # Known
+water_refractive_index: 1.345 # Known
+
