@@ -31,6 +31,7 @@ train_args=(
     --output-dir "${WS}/outputs"
     --timestamp "${NAME}"
     --vis viewer
+    --machine.device_type cuda #[mps, cpu]
     ${mask_flag}
 )
 

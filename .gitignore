@@ -13,3 +13,4 @@ sam3/
 nerfstudio/
 3dgs2pc/
 .gradio/
+scripts/no_display.so
