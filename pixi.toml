@@ -215,7 +215,7 @@ channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64", "osx-arm64"]
 
 [feature.colmap.system-requirements]
-cuda = "12.6"
+cuda = "12.9"
 
 [feature.colmap.dependencies]
 python = "*"
@@ -225,12 +225,15 @@ pillow = ">=12.2.0,<13"
 numpy = "*"
 ffmpeg = "*"
 pyyaml = "*"
+libfaiss = "*"
+openimageio = "*"
 
 [feature.colmap.target.linux-64.dependencies]
-colmap = { build="*cuda*", version = ">=3.12,<3.13" }
+mkl = "2024.*"
+colmap = { build="*cuda*", version = "=4.0.4" }
 
 [feature.colmap.target.osx-arm64.dependencies]
-colmap = { version = ">=3.12,<3.13" }
+colmap = { version = "=4.0.4" }
 
 [feature.colmap.tasks]
 

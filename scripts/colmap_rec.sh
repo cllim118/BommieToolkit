@@ -31,6 +31,7 @@ featext_args=(
   --ImageReader.single_camera_per_image 0
   --ImageReader.existing_camera_id -1
   --ImageReader.default_focal_length_factor 1.2
+  --FeatureExtraction.type ALIKED_N16ROT
   ${mask_flag}
 )
 
@@ -38,7 +39,13 @@ pc colmap feature_extractor "${featext_args[@]}"
 
 pc colmap rig_configurator --database_path ${WS}/database.db --rig_config_path ${CALIB_WS}/rig_config.json
 
-pc colmap exhaustive_matcher --database_path ${WS}/database.db
+match_args=(
+  --database_path ${WS}/database.db
+  --FeatureMatching.type ALIKED_LIGHTGLUE
+  --AlikedMatching.lightglue_min_score 0.3
+)
+
+pc colmap exhaustive_matcher "${match_args[@]}"
 
 # NEED TO HANDLE CASE IN WHICH THIS FOLDER ALREADY EXISTS
 mkdir -p ${WS}/sparse

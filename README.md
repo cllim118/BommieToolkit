@@ -232,14 +232,12 @@ pix run transform_splats --splat_path  path/to/splat.ply \
 ```
 
 
-"ply_file_path" : "/home/alejandro/BommieToolkit/monkey_output/sparse/0/mesh.ply",
-
 ## BommieToolkit Roadmap
 
 - [ ] Make Kalibr a Conda package
-- [ ] Implement one end-to-end command, from videos to GS.
+- [X] Implement one end-to-end command, from videos to GS.
 - [ ] Documentation for the intermediate outputs
 - [ ] Documentation on recording calibration/reconstruction data
 - [ ] Documentation on gopro settings
 - [ ] How to build an underwater calibration pattern
-- [ ] Refraction Removal
+- [X] Refraction Removal
