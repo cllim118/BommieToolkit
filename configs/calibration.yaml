@@ -1,0 +1,36 @@
+# ================================
+# Kalibr stereo calibration config
+# ================================
+
+# Calibration output directory
+calibration_dir: calibration_output/gopro10
+
+# Input videos
+videos:
+  left: /home/chelim/chelim/00_dataset/left.MP4
+  right: /home/chelim/chelim/00_dataset/right.MP4
+
+# Image extraction settings
+extract:
+  resolution: medium   # extra-low(~320x240) | low(~640x480) | medium(~1920x1080) | high(~3840x2160)
+  gray: true
+  skip: 5.0
+  max_frames: 0     
+
+# Image sync
+sync:
+  enabled: true
+  threshold_ns: 5000000
+  sample_step: 5
+
+# Calibration settings
+calibrate:
+  target: files/april_10x6.yaml
+  freq: 30
+  verbose: 0
+  create_bag: 1 
+  manual_focal_length_init: 0
+
+# Generate rig_config.json
+rig_config:
+  enabled: true
