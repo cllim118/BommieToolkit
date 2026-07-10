@@ -14,6 +14,10 @@ extract_images_dev = "python scripts/vid2imgs_dev.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
 transform_splats = "python scripts/transform_splats.py"
 
+[tasks.run-full-reconstruction]
+cmd = "python scripts/run_full_reconstruction.py --config {{ config }}"
+args = [{ arg = "config", default = "configs/reconstruction.yaml" }]
+
 
 [dependencies]
 python = "*"
