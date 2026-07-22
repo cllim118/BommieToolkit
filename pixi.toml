@@ -90,8 +90,8 @@ outputs = [
 ]
 cmd = "./scripts/calibrate_stereo_rig.sh images_folder_left={{ calibration_dir }}/cam0 images_folder_right={{ calibration_dir }}/cam1 output_folder={{ calibration_dir }} verbose=0 create_bag=1 target={{ calibration_target }} freq={{ calibration_freq }}"
 
-[feature.kalibr.tasks.calibrate-full]
-cmd = "python scripts/run_full_calibration.py --config {{ config }}"
+[feature.kalibr.tasks.calibrate]
+cmd = "python scripts/run_calibration.py --config {{ config }}"
 args = [{ arg = "config", default = "configs/calibration.yaml" }]
 
 [feature.kalibr.dependencies]

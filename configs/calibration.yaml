@@ -2,13 +2,23 @@
 # Kalibr stereo calibration config
 # ================================
 
+# pixi run -e kalibr calibrate configs/calibration.yaml
+
+steps:
+  extract: true
+  sync: true
+  calibrate: true
+  postprocess: true
+  rig_config: true
+
 # Calibration output directory
-calibration_dir: calibration_output/gopro10
+calibration_dir: /calibration_output
 
 # Input videos
-videos:
-  left: videos/cal_left.MP4
-  right: videos/cal_right.MP4
+cameras:
+  - video: videos/cal_left.MP4
+  - video: videos/cal_middle.MP4
+  - video: videos/cal_right.MP4
 
 # Image extraction settings
 extract:
@@ -17,11 +27,10 @@ extract:
   skip: 5.0
   max_frames: 0     
 
-# Image sync - optional
+# Image sync
 sync:
-  enabled: true
   threshold_ns: 5000000
-  sample_step: 5
+  sample_step: 3
 
 # Calibration settings
 calibrate:
@@ -29,7 +38,12 @@ calibrate:
   freq: 30
   verbose: 0
   create_bag: 1 
-  manual_focal_length_init: 0
+  manual_focal_length_init: 1
+
+postprocess:
+  april: files/april_10x6.yaml
+  housing: files/housing_params.yaml 
+  camera: cam0 
 
 # Generate rig_config.json
 rig_config:
