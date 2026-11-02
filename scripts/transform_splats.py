@@ -39,7 +39,7 @@ def main() -> None:
 
     R, t, scale = load_transform(args.transform_path)
 
-    print(f"\Transforming {args.splat_path} to its original space …")
+    print(f"\nTransforming {args.splat_path} to its original space …")
     ply = PlyData.read(str(args.splat_path))
     v = ply["vertex"]
     print(f"  {len(v)} points")

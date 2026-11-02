@@ -1,13 +1,14 @@
-import cv2
 import argparse
 import os
-from tqdm import tqdm
-import subprocess
-from typing import Optional
-from fractions import Fraction
-from argparse import BooleanOptionalAction
-from pathlib import Path
 import shutil
+import subprocess
+import sys
+from fractions import Fraction
+from pathlib import Path
+from typing import Optional
+
+import cv2
+from tqdm import tqdm
 
 def probe_timecode(path: str) -> Optional[str]:
     cmd = [
@@ -67,132 +68,94 @@ def timecode_to_ns(tc: str, fps) -> int:
     total_seconds = Fraction(hh*3600 + mm*60 + ss, 1) + Fraction(ff, 1) / fps
     return int(round(total_seconds * 1_000_000_000))
 
-def sharpness(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    fm = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return fm
+# Target pixel counts for the --resolution presets (aspect ratio is preserved, never upscaled)
+TARGET_PIXELS = {
+    'lowest': 320 * 240,
+    'low': 640 * 480,
+    'medium': 1920 * 1080,
+    'high': 3840 * 2160,
+}
+IMAGE_FORMATS = ['png', 'jpg', 'jpeg', 'bmp', 'tiff']
+
 
 def main():
-
-    print('Converting video to images...')
-    parser = argparse.ArgumentParser(description='Convert video to images at desired frame rate')
-    parser.add_argument('--video', type=str, help='Path to video file')
-    parser.add_argument('--output', type=str, help='Path to output directory')
-
-    parser.add_argument('--resolution', type=str, choices=['lowest', 'low', 'medium', 'high'], default=None,
-                        help='Preset resolution scale: lowest (~320x240), low (~640x480), medium (~1920x1080), high (~3840x2160)')
-    parser.add_argument('--gray', action='store_true', help='Process frames in grayscale')
-    parser.add_argument('--format', type=str, default='png', help='Image format')
-
-    parser.add_argument('--max_frames', type=int, default=None, help='Maximum number of frames to extract')
+    parser = argparse.ArgumentParser(description='Extract timestamp-named frames (from the GoPro timecode) from a video')
+    parser.add_argument('--video', type=str, required=True, help='Path to video file')
+    parser.add_argument('--output', type=str, required=True, help='Output directory (wiped if it exists)')
+    parser.add_argument('--resolution', type=str, choices=list(TARGET_PIXELS), default=None,
+                        help='Downscale preset: lowest (~320x240), low (~640x480), medium (~1920x1080), high (~3840x2160)')
+    parser.add_argument('--gray', action='store_true', help='Save frames in grayscale')
+    parser.add_argument('--format', type=str, choices=IMAGE_FORMATS, default='png', help='Image format')
+    parser.add_argument('--max_frames', type=int, default=None, help='Maximum number of frames to extract (0 = no limit)')
     parser.add_argument('--skip', type=float, default=0.0, help='Seconds to skip at start of video')
-    parser.add_argument('--vis', type=bool, default=False, help='Visualize the video')
-
+    parser.add_argument('--sample_step', type=int, default=1, help='Keep every Nth frame (1 = keep all frames)')
+    parser.add_argument('--vis', action='store_true', help='Show frames while extracting')
     args = parser.parse_args()
-    path_video = args.video
-    path_output = args.output
 
-    resolution = args.resolution
-    format = args.format
+    sample_step = max(1, args.sample_step)
 
-    max_frames = args.max_frames
-    skip = args.skip
-    vis = args.vis
+    fps = probe_fps(args.video)
+    tc = probe_timecode(args.video)
+    if fps is None or tc is None:
+        sys.exit(f'Could not read fps/timecode from {args.video} (frames are named by the timecode)')
 
-    fps = probe_fps(path_video)
-
-    # If output folder exists, remove it and everything inside
-    folder_output = Path(path_output)
+    folder_output = Path(args.output)
     if folder_output.exists() and folder_output.is_dir():
         shutil.rmtree(folder_output)
     folder_output.mkdir(parents=True, exist_ok=True)
 
-    # Resolution scaling
-    TARGET_PIXELS_EXTRA_LOW = 320 * 240  # 76,800
-    TARGET_PIXELS_LOW = 640 * 480  # 307,200
-    TARGET_PIXELS_MEDIUM = 1920 * 1080  # 2,073,600
-    TARGET_PIXELS_HIGH = 3840 * 2160  # 8,294,400
-
-    scale = False
-    scale_factor = 1.0
-    define_factor = False
-    if resolution == 'lowest':
-        TARGET_PIXELS = TARGET_PIXELS_EXTRA_LOW
-        scale = True
-        define_factor = True
-    elif resolution == 'low':
-        TARGET_PIXELS = TARGET_PIXELS_LOW
-        scale = True
-        define_factor = True
-    elif resolution == 'medium':
-        TARGET_PIXELS = TARGET_PIXELS_MEDIUM
-        scale = True
-        define_factor = True
-    elif resolution == 'high':
-        TARGET_PIXELS = TARGET_PIXELS_HIGH
-        scale = True
-        define_factor = True
-
     # Time synchronization via timecode
-    tc = probe_timecode(path_video)
     time_ns = 1000000000000000000 + timecode_to_ns(tc, fps)
-    delta = int(1.0/fps * 1e9)
+    delta = int(1.0 / fps * 1e9)
 
-    if format not in ['png', 'jpg', 'jpeg', 'bmp', 'tiff']:
-        print('Invalid image format!!!')
-        return
-
-    cap = cv2.VideoCapture(path_video)
+    cap = cv2.VideoCapture(args.video)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    counter = 0
 
     frames_to_skip = 0
-    if skip > 0.0:
-        seconds_per_frame = 1.0 / fps
-        frames_to_skip = int(skip / seconds_per_frame)
+    if args.skip > 0.0:
+        frames_to_skip = int(args.skip / (1.0 / fps))
         cap.set(cv2.CAP_PROP_POS_FRAMES, frames_to_skip)
         time_ns += frames_to_skip * delta
 
-
-    for i in tqdm(range(frame_count - frames_to_skip), desc ="Extracting"):
-        ret, img = cap.read()
+    scale_factor = None
+    counter = 0
+    for i in tqdm(range(frame_count - frames_to_skip), desc='Extracting'):
         time_ns += delta
 
-        if define_factor and scale:
-            h0, w0 = img.shape[:2]
-            scale_factor = (TARGET_PIXELS / float(w0 * h0)) ** 0.5
-            scale_factor = min(1.0, scale_factor)
-            define_factor = False
+        # Skip frames that are not on the sampling grid (grab() avoids decoding cost)
+        if i % sample_step != 0:
+            cap.grab()
+            continue
 
-        if ret :
-            image_timestamp = time_ns
-            width = int(img.shape[1] *  scale_factor)
-            height = int(img.shape[0] * scale_factor)
-            res_img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
+        ret, img = cap.read()
+        if not ret:
+            continue
 
-            if vis:
-                cv2.imshow('Frame', res_img)
-                cv2.waitKey(30)
+        if scale_factor is None:
+            scale_factor = 1.0
+            if args.resolution is not None:
+                h0, w0 = img.shape[:2]
+                scale_factor = min(1.0, (TARGET_PIXELS[args.resolution] / float(w0 * h0)) ** 0.5)
 
-            # Change the image to grayscale
-            image_timestamp_str = f"{image_timestamp:019d}"
+        width = int(img.shape[1] * scale_factor)
+        height = int(img.shape[0] * scale_factor)
+        res_img = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
+        if args.gray:
+            res_img = cv2.cvtColor(res_img, cv2.COLOR_BGR2GRAY)
 
-            if args.gray:
-                gray = cv2.cvtColor(res_img, cv2.COLOR_BGR2GRAY)
-                cv2.imwrite(os.path.join(path_output, f'{image_timestamp_str}.{format}'), gray)
-            else:
-                cv2.imwrite(os.path.join(path_output, f'{image_timestamp_str}.{format}'), res_img)
+        if args.vis:
+            cv2.imshow('Frame', res_img)
+            cv2.waitKey(30)
 
-            counter += 1
+        cv2.imwrite(os.path.join(args.output, f'{time_ns:019d}.{args.format}'), res_img)
+        counter += 1
 
-        if max_frames is not None and max_frames > 0 and counter >= max_frames:
+        if args.max_frames and counter >= args.max_frames:
             break
 
     cap.release()
-    if vis: cv2.destroyAllWindows()
-
-    return
-
+    if args.vis:
+        cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':

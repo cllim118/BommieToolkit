@@ -1,0 +1,26 @@
+# ===================================================
+# Gaussian splatting (nerfstudio): transforms.json -> metric-scale .ply
+#   pixi run run-3dgs configs/3dgs.yaml
+#   pixi run run-3dgs configs/3dgs.yaml --steps export,transform
+# Relative paths are resolved from the repo root.
+# ===================================================
+
+# Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
+steps:
+  train: true       # -> {output_dir}/train/{method}/{run_name}/
+  export: true      # -> {output_dir}/exports/splat.ply
+  transform: true   # -> {output_dir}/splat_metric.ply (COLMAP / metric frame)
+
+# Output of run-colmap (folder containing transforms.json).
+colmap_dir: colmap_output
+
+output_dir: 3dgs_output
+
+train:
+  method: splatfacto     # splatfacto | splatfacto-big | ...
+  run_name: latest       # re-using a name overwrites that run
+  vis: viewer            # viewer | tensorboard | wandb | viewer+tensorboard
+  max_num_iterations: 0  # 0 = nerfstudio default (30000 for splatfacto)
+  masked: false          # true if run-colmap used use_masks (random background)
+  # Extra raw ns-train arguments, e.g. ["--pipeline.model.cull-alpha-thresh", "0.005"]
+  extra_args: []

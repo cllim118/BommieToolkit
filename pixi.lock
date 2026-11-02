@@ -19,6 +19,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/colmap-4.0.4-cuda_129h7d026d0_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/cuda-cudart-12.9.79-h5888daf_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/cuda-nvrtc-12.9.86-hecca717_1.conda
+      - conda: https://prefix.dev/conda-forge/linux-64/cudnn-9.10.2.21-hbcb9cd8_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/cyrus-sasl-2.1.28-hd9c7081_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/dav1d-1.2.1-hd590300_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/dbus-1.16.2-h24cb091_1.conda
@@ -80,6 +81,8 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/libclang13-22.1.4-default_h746c552_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/libcolamd-3.3.4-hf02c80a_7100101.conda
       - conda: https://prefix.dev/conda-forge/linux-64/libcublas-12.9.2.10-h676940d_0.conda
+      - conda: https://prefix.dev/conda-forge/linux-64/libcudnn-9.10.2.21-hf7e9902_0.conda
+      - conda: https://prefix.dev/conda-forge/linux-64/libcudnn-dev-9.10.2.21-h58dd1b1_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/libcups-2.3.3-hb8b1518_5.conda
       - conda: https://prefix.dev/conda-forge/linux-64/libcurand-10.3.10.19-h676940d_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/libcurl-8.18.0-h4e3cde8_0.conda
@@ -36550,6 +36553,9 @@ packages:
   - cudnn-jit <0a
   license: LicenseRef-cuDNN-Software-License-Agreement
   purls: []
+  run_exports:
+    weak:
+    - cudnn >=9.10.2.21,<10.0a0
   size: 19646
   timestamp: 1762823905292
 - conda: https://prefix.dev/conda-forge/linux-64/cusparselt-0.8.1.1-h58dd1b1_1.conda
@@ -38345,6 +38351,7 @@ packages:
   - libcudnn-jit <0a
   license: LicenseRef-cuDNN-Software-License-Agreement
   purls: []
+  run_exports: {}
   size: 526823453
   timestamp: 1762823414388
 - conda: https://prefix.dev/conda-forge/linux-64/libcudnn-dev-9.10.2.21-h58dd1b1_0.conda
@@ -38360,6 +38367,9 @@ packages:
   - libcudnn-jit-dev <0a
   license: LicenseRef-cuDNN-Software-License-Agreement
   purls: []
+  run_exports:
+    weak:
+    - libcudnn >=9.10.2.21,<10.0a0
   size: 44188
   timestamp: 1762823889020
 - conda: https://prefix.dev/conda-forge/linux-64/libcudss-0.6.0.5-h58dd1b1_0.conda

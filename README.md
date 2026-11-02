@@ -11,226 +11,106 @@
     <a href="https://scholar.google.com/citations?user=MNrMUPMAAAAJ&hl=en"><strong>Emilio Olivastri</strong></a>
 </p>
 
-## Video Recording
+## Pipeline
 
-## Rig Calibration
-Build Kalibr
+The toolkit runs in three stages. Each stage is driven by **one yaml file** (templates in `configs/`):
+
+| Stage | Command | Config | Main output |
+|---|---|---|---|
+| Rig calibration (Kalibr) | `pixi run run-calibration <cfg>` | `configs/calibration.yaml` | `calibration-camchain.yaml`, `rig_config.json` |
+| COLMAP reconstruction | `pixi run run-colmap <cfg>` | `configs/colmap.yaml` | `sparse/0`, `transforms.json` |
+| Gaussian splatting (nerfstudio) | `pixi run run-3dgs <cfg>` | `configs/3dgs.yaml` | `splat_metric.ply` |
+
+Copy a template, edit the paths, and run it. Per-dataset configs can live in `configs/local/` (git-ignored):
+
+```bash
+cp configs/colmap.yaml configs/local/my_scene.yaml
+pixi run run-colmap configs/local/my_scene.yaml
+```
+
+Each config has a `steps:` section to choose which steps run. Override it from the command line, e.g. to
+re-run only part of a stage:
+
+```bash
+pixi run run-calibration configs/local/my_rig.yaml --steps calibrate,rig_config
+pixi run run-colmap configs/local/my_scene.yaml --steps colmap,colmap2nerf
+pixi run run-3dgs configs/local/my_scene_3dgs.yaml --steps export,transform
+```
+
+Stages are chained through paths: `colmap.yaml` points at the calibration `output_dir` (`calibration_dir`),
+and `3dgs.yaml` points at the COLMAP `output_dir` (`colmap_dir`).
+
+### 1. Rig calibration
+
+Build Kalibr once:
 ```bash
 pixi run -e kalibr build
 ```
 
-Extract images from calibration videos
+`run-calibration` steps:
+- `extract`: video → frames (`{output_dir}/cam{i}`), named by the GoPro timecode in ns.
+- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/syncd/cam{i}`).
+- `housing`: underwater refraction removal (only if `housing.enabled`, see below).
+- `calibrate`: Kalibr multi-camera calibration → `calibration-camchain.yaml`, report PDF.
+- `rig_config`: camchain → COLMAP `rig_config.json`.
+
+Any number of cameras is supported; `cam0` (first entry in `cameras:`) is the reference.
+- `calibrate.verbose: true` shows Kalibr's plots, which needs a display.
+- `calibrate.create_bag: false` reuses an existing `calibration.bag`.
+- If Kalibr fails to initialise the focal length, `manual_focal_length_init: true` makes it ask for one per
+  camera; a good guess is half the image height. Set `focal_length_guesses: [...]` to answer automatically.
+
+**Underwater housing (flat port).** First calibrate the rig in air. Then run a second calibration on the
+underwater target videos with `housing.enabled: true` and `housing.air_calibration_dir` pointing at the in-air
+calibration. This estimates the refraction per camera (uwsfm / Pinax), writes `undistort_map_cam{i}.yaml`,
+undistorts the frames and re-calibrates on them.
+
+### 2. COLMAP reconstruction
+
+`run-colmap` steps:
+- `extract`, `sync`: as above, into `{output_dir}/images/rig1/camera{i+1}`.
+- `undistort`: applies the housing undistort maps from `calibration_dir` (only if `refraction_removal: true`).
+- `masks`: (only if `use_masks: true`) opens the SAM3 app at http://0.0.0.0:7997. It needs a Hugging Face
+  login first (`pixi run -e sam hf auth login`). Save masks to `{output_dir}/masks`, mirroring the `images` layout.
+- `colmap`: builds `rig_config.json` with intrinsics scaled to the frame size, then runs feature extraction,
+  rig configuration, matching (sequential or exhaustive; SIFT or ALIKED/LightGlue) and the mapper. It also
+  exports a TXT model and `mesh.ply`.
+- `colmap2nerf`: writes `transforms.json` for nerfstudio.
+
+For a mask that is the same in every frame (housing edges, rig parts in view), set `static_mask` to one
+image for all cameras or to a list with one per camera. White pixels are kept and black ones ignored, and
+the mask must match the frame size. COLMAP skips the masked area, and nerfstudio leaves it out of the loss.
+
+Visualize a reconstruction with the COLMAP GUI or with [Rerun](https://rerun.io):
 ```bash
-# Target pixel counts used for scaling based on the '--resolution' preset
-#     Presets: extra-low (~320x240), low (~640x480), medium (~1920x1080), high (~3840x2160)
-# 'skip' specifies how many seconds to skip from the beginning of the video
-pixi run extract_images --video videos/cal_left.MP4 --output calibration_output/cam0 --gray --resolution medium (--skip 2.0)
-pixi run extract_images --video videos/cal_right.MP4 --output calibration_output/cam1 --gray --resolution medium (--skip 2.0)
-```
-(OPTIONAL!! But makes life easier)
-Synch image pairs using timestamps
-```bash
-pixi run match_images_by_ns \
-  --images_folder_left calibration_output/cam0 \
-  --images_folder_right calibration_output/cam1 \
-  --colmap_folder_left calibration_output/syncd/cam0 \
-  --colmap_folder_right calibration_output/syncd/cam1 \
-  --threshold-ns 5000000 \
-  --sample_step 5
-```
+pixi run -e colmap colmap gui --database_path colmap_output/database.db \
+  --image_path colmap_output/images --import_path colmap_output/sparse/0
 
-Run calibration
-
-```bash
-pixi run -e kalibr kalibr-calibrate-stereo-rig \
-  images_folder_left=calibration_output/cam0 \
-  images_folder_right=calibration_output/cam1 \
-  output_folder=calibration_output \
-  target=files/april_10x6.yaml \
-  freq=30
-```
-Added optional flags: verbose, and create_bag.
-- verbose: The default value is 0, deactivating the visualization which makes the calibration fail when there is no screen avaialable.
-- create_bag: The default value is 1, which makes you create the rosbag every time you run the calibration script. If happy with the first bag, just setting create_bag=0, will avoid this extra step.
-
-Added the following flag to handle cases in which the calibration fails due to bad initialization. The scritp is going to wait for an input by the user to initialize the focal length. Typical good value is the half of the height of the image.
-
-```bash
-export KALIBR_MANUAL_FOCAL_LENGTH_INIT=1
-```
-
-Calibration with extra flags
-
-```bash
-pixi run -e kalibr kalibr-calibrate-stereo-rig \
-  images_folder_left=calibration_output/cam0 \
-  images_folder_right=calibration_output/cam1 \
-  output_folder=calibration_output \
-  verbose=1 create_bag=0 \
-  target=files/april_10x6.yaml \
-  freq=30
+pixi run visualize_colmap --sparse_dir colmap_output/sparse/0 --images_dir colmap_output/images
+#   --serve           open the viewer in the browser
+#   --resize 1280x720 downscale images before streaming
 ```
 
-Generate .json file with rig configuration
+### 3. Gaussian splatting
+
+nerfstudio lives in its own pixi project (`nerfstudio/`); the first `run-3dgs` clones and sets it up.
+
+`run-3dgs` steps:
+- `train`: `ns-train splatfacto` → `{output_dir}/train/{method}/{run_name}/`.
+- `export`: `ns-export gaussian-splat` → `{output_dir}/exports/splat.ply`.
+- `transform`: nerfstudio normalizes the scene for training; this step applies the inverse
+  `dataparser_transforms.json` to get back the COLMAP metric frame → `{output_dir}/splat_metric.ply`.
+
+Set `train.masked: true` if the COLMAP stage used masks (random background). Inspect a trained model with:
 ```bash
-pixi run get_rig_config_json calibration_output/calibration-camchain.yaml calibration_output/rig_config.json
+pixi run --manifest-path nerfstudio/pixi.toml ns-viewer --load-config 3dgs_output/train/splatfacto/latest/config.yml
 ```
 
-## COLMAP Reconstruction
-Extract images from videos
+### Individual tools
 
-```bash
-pixi run extract_images --video videos/monkey_left.MP4 --output monkey_output/monkey_images_left --resolution medium
-pixi run extract_images --video videos/monkey_right.MP4 --output monkey_output/monkey_images_right --resolution medium
-```
-
-Synch image pairs using timestamps
-
-```bash
-pixi run match_images_by_ns \
-  --images_folder_left monkey_output/monkey_images_left \
-  --images_folder_right monkey_output/monkey_images_right \
-  --colmap_folder_left monkey_output/colmap_images/rig1/camera1 \
-  --colmap_folder_right monkey_output/colmap_images/rig1/camera2 \
-  --threshold-ns 5000000
-```
-(OPTIONAL) Get masks for the images using sam3, you have to have a hugging face account and login to download the weights
-```bash
-pixi run -e sam hf auth login
-pixi run -e sam create_masks
-```
-To access the app click navigate on the following link:
-```bash
-http://0.0.0.0:7997
-```
-
-
-Execute COLMAP
-```bash
-pixi run -e colmap colmap feature_extractor \
-  --image_path monkey_output/colmap_images \
-  --database_path monkey_output/database.db \
-  --ImageReader.single_camera 1 \
-  --ImageReader.single_camera_per_folder 1 \
-#  --ImageReader.mask_path monkey_output/masks \ To be used in case masks were produced using SAM3
-  --ImageReader.single_camera_per_image 0
-```
-
-```bash
-pixi run -e colmap colmap rig_configurator \
-  --database_path monkey_output/database.db \
-  --rig_config_path calibration_output/rig_config.json
-```
-
-```bash
-pixi run -e colmap colmap sequential_matcher --database_path monkey_output/database.db
-```
-
-```bash
-mkdir -p monkey_output/sparse
-pixi run -e colmap colmap mapper \
-  --database_path monkey_output/database.db  \
-  #--Mapper.ba_refine_sensor_from_rig 0 \
-  --Mapper.ba_refine_focal_length 0 \
-  --Mapper.ba_refine_extra_params 0 \
-  --image_path monkey_output/colmap_images \
-  --output_path monkey_output/sparse \
-  --Mapper.ba_use_gpu 1
-
-pixi run -e colmap colmap mapper \
-  --database_path monkey_output/database.db  \
-  --Mapper.ba_refine_focal_length 0 \
-  --Mapper.ba_refine_extra_params 0 \
-  --image_path monkey_output/colmap_images \
-  --output_path monkey_output/sparse \
-  --Mapper.ba_use_gpu 1
-```
-
-Visualize reconstruction with COLMAP GUI
-```bash
-pixi run -e colmap colmap gui \
-  --database_path monkey_output/database.db  \
-  --image_path monkey_output/colmap_images \
-  --import_path monkey_output/sparse/0
-```
-
-Visualize reconstruction with [Rerun](https://rerun.io) (interactive 3-D viewer with camera poses, point cloud and reprojected keypoints)
-```bash
-# Binary model (default after mapper)
-pixi run visualize_colmap \
-  --sparse_dir monkey_output/sparse/0 \
-  --images_dir monkey_output/colmap_images
-
-# Text model (after model_converter --output_type TXT) — also supported
-pixi run visualize_colmap \
-  --sparse_dir monkey_output/sparse/0 \
-  --images_dir monkey_output/colmap_images
-
-# Open Rerun viewer in browser instead of the desktop app
-pixi run visualize_colmap \
-  --sparse_dir monkey_output/sparse/0 \
-  --images_dir monkey_output/colmap_images \
-  --serve
-
-# Resize images before streaming (saves bandwidth when working remotely)
-pixi run visualize_colmap \
-  --sparse_dir monkey_output/sparse/0 \
-  --images_dir monkey_output/colmap_images \
-  --resize 1280x720
-```
-
-Get COLMAP output
-```bash
-pixi run -e colmap colmap model_converter \
-	--input_path monkey_output/sparse/0 \
-    --output_path monkey_output/sparse/0 \
-    --output_type TXT
-```
-
-```bash
-pixi run -e colmap colmap model_converter \
-	--input_path monkey_output/sparse/0 \
-    --output_path monkey_output/sparse/0/mesh.ply \
-    --output_type PLY
-```
-
-```bash
-pixi run colmap2nerf --text sparse/0 --images colmap_images --out transforms.json --keep_colmap_coords
-```
-In case the masks corresponding to the images were generated using SAM3, we need to add the mask flag. The mask folder has to have the same structure as the colmap_images folder. 
-```bash
-pixi run colmap2nerf --text sparse/0 --images colmap_images --masks masks --out transforms.json --keep_colmap_coords
-```
-
-## GS Reconstruction with nerfstudio
-
-```bash
-git clone https://github.com/nerfstudio-project/nerfstudio.git
-cd nerfstudio
-pixi run post-install
-pixi shell
-```
-
-```bash
-ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output --vis viewer
-```
-In case the masking has been performed previously on the images, and we are working on the masked images the command becomes:
-```bash
-ns-train splatfacto --data /home/alejandro/BommieToolkit/monkey_output --vis viewer --pipeline.model.background_color "random"
-```
-
-```bash
-ns-viewer --load-config outputs/monkey_output/splatfacto/2025-11-19_105617/config.yml
-```
-Nerfstudio normalizes coordinates to make the training process go faster. So we need to apply the inverse of a nerfstudio dataparser transform to the splat to go back to our metric scale. 
-
-```bash
-pixi shell # (default one)
-pix run transform_splats --splat_path  path/to/splat.ply \
-                         --transform_path path/to/dataparser_transforms.json \
-                         --output_path path/to/splat_original.ply 
-```
-
+The pipeline scripts can also be run on their own (`--help` for options): `extract_images`,
+`match_images_by_ns`, `get_rig_config_json`, `colmap2nerf`, `transform_splats`, `visualize_colmap`
+(default env) and `calibrate-rig` (`-e kalibr`).
 
 ## BommieToolkit Roadmap
 

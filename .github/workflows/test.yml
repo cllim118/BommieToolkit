@@ -39,6 +39,12 @@ jobs:
       - name: Run get_rig_config_json --help
         run: pixi run get_rig_config_json --help
 
+      - name: Run pipeline runners --help
+        run: |
+          pixi run run-calibration --help
+          pixi run run-colmap --help
+          pixi run run-3dgs --help
+
       - name: Check colmap environment
         run: pixi run -e colmap colmap --help
 

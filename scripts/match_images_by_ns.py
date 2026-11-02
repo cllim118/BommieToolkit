@@ -65,9 +65,11 @@ def parse_numbered_flag(argv: list[str], prefix: str) -> dict[int, str]:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Match images across N folders by nanosecond timestamps.")
+    ap = argparse.ArgumentParser(
+        description="Match images across N folders by nanosecond timestamps. "
+                    "Pass --images_folder_N <in> --colmap_folder_N <out> for N = 0, 1, ... (cam0 is the reference).")
 
-    ap.add_argument("--sample_step", type=int, default=10, help="")
+    ap.add_argument("--sample_step", type=int, default=10, help="Keep every Nth matched set of frames")
     ap.add_argument("--threshold-ns", type=int, required=True,
                     help="Max allowed absolute timestamp difference (in nanoseconds)")
     
@@ -77,17 +79,14 @@ def main():
     colmap_folder = parse_numbered_flag(sys.argv[1:], "colmap_folder")
 
     if not images_folder:
-        print("No --images_folder_N arguments given.")
-        return
+        sys.exit("No --images_folder_N arguments given.")
  
     num_cameras = max(images_folder) + 1
     for i in range(num_cameras):
         if i not in images_folder:
-            print(f"Missing --images_folder_{i} - camera indices must be contiguous starting at 0.")
-            return
+            sys.exit(f"Missing --images_folder_{i} - camera indices must be contiguous starting at 0.")
         if i not in colmap_folder:
-            print(f"Missing --colmap_folder_{i} - every images_folder_N needs a matching colmap_folder_N.")
-            return
+            sys.exit(f"Missing --colmap_folder_{i} - every images_folder_N needs a matching colmap_folder_N.")
 
     in_paths = {i: Path(images_folder[i]) for i in range(num_cameras)}
     out_paths = {i: Path(colmap_folder[i]) for i in range(num_cameras)}
@@ -95,8 +94,7 @@ def main():
     items = {i: list_images_with_ts(in_paths[i]) for i in range(num_cameras)}
     for i, its in items.items():
         if not its:
-            print(f"No timestamped images found in folder cam{i}.")
-            return
+            sys.exit(f"No timestamped images found in {in_paths[i]}.")
  
     for folder in out_paths.values():
         if folder.exists() and folder.is_dir():
@@ -141,6 +139,8 @@ def main():
         counter += 1
  
     print(f"Done. Matches copied: {matches}. cam0 images skipped (no close match / subsampled): {skipped}.")
+    if matches == 0:
+        sys.exit("No matching frames across cameras - check --threshold-ns and that the videos overlap in time.")
  
  
 if __name__ == "__main__":

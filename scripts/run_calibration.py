@@ -1,258 +1,152 @@
 #!/usr/bin/env python3
 """
-Full pipeline runner for Kalibr stereo calibration.
+Multi-camera rig calibration with Kalibr, driven by a single yaml config.
+
+Steps (toggle with the yaml `steps:` section or --steps):
+  extract     videos -> {output_dir}/cam{i}
+  sync        keep timestamp-matched frames -> {output_dir}/syncd/cam{i}
+  housing     (only if housing.enabled) underwater refraction removal starting from an in-air
+              calibration -> {output_dir}/undistort_map_cam{i}.yaml + {output_dir}/undistorted/cam{i}
+  calibrate   Kalibr on the synced (or undistorted) frames -> {output_dir}/calibration-camchain.yaml
+  rig_config  camchain -> {output_dir}/rig_config.json (COLMAP rig config)
 
 Usage:
-    pixi run -e kalibr calibrate configs/calibration.yaml
+    pixi run run-calibration configs/calibration.yaml
 """
-import argparse
 import os
-import subprocess
-import sys
+import shutil
 from pathlib import Path
 
-import yaml
+from common import (REPO_ROOT, SCRIPTS_DIR, extract_images, fail, get_videos, list_images,
+                    load_config, pixi, run, run_script, run_steps, sync_images, to_path)
+
+STEPS = ["extract", "sync", "housing", "calibrate", "rig_config"]
 
 
-def run(cmd: list[str], env: dict | None = None, input_text: str | None = None) -> None:
-    print(f"\n$ {' '.join(cmd)}\n", flush=True)
-    result = subprocess.run(cmd, env=env, input=input_text, text=True if input_text is not None else None)
-    if result.returncode != 0:
-        print(f"[ERROR] command failed (exit={result.returncode}): {' '.join(cmd)}")
-        sys.exit(result.returncode)
+class Calibration:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.out = to_path(cfg["output_dir"])
+        self.videos = get_videos(cfg)
+        self.n = len(self.videos)
+        self.calib_cfg = cfg.get("calibrate", {})
+        self.housing_cfg = cfg.get("housing") or {}
+        self.target = to_path(self.calib_cfg.get("target", "files/april_10x6.yaml"))
 
+        self.raw_dirs = [self.out / f"cam{i}" for i in range(self.n)]
+        self.synced_dirs = [self.out / "syncd" / f"cam{i}" for i in range(self.n)]
+        self.undistorted_dirs = [self.out / "undistorted" / f"cam{i}" for i in range(self.n)]
+        self.camchain = self.out / "calibration-camchain.yaml"
+        self.rig_config = self.out / "rig_config.json"
 
-def get_camera_list(cfg: dict) -> list[dict]:
-    cameras = cfg.get("cameras") or []
-    if not cameras:
-        print("[ERROR] Config must have a non-empty `cameras:` list.")
-        sys.exit(2)
-    return cameras
+    @property
+    def calib_image_dirs(self) -> list[Path]:
+        return self.undistorted_dirs if self.housing_cfg.get("enabled", False) else self.synced_dirs
 
+    def extract(self) -> None:
+        extract_images(self.videos, self.raw_dirs, self.cfg.get("extract", {}))
 
-def extract_images(cfg: dict) -> None:
-    extract_cfg = cfg["extract"]
-    calib_dir = Path(cfg["calibration_dir"])
-    cameras = get_camera_list(cfg)
+    def sync(self) -> None:
+        sync_images(self.raw_dirs, self.synced_dirs, self.cfg.get("sync", {}))
 
-    for idx, cam in enumerate(cameras):
-        video = cam["video"]
-        output = calib_dir / f"cam{idx}"
+    def housing(self) -> None:
+        """Port of the old housing_calibration.sh: per camera, estimate the flat-port refraction
+        from the in-air intrinsics, build an undistortion map and undistort the synced frames.
+        The `calibrate` step then re-runs Kalibr on the undistorted frames."""
+        if not self.housing_cfg.get("enabled", False):
+            print("(housing.enabled is false - nothing to do)")
+            return
 
-        cmd = [
-            "pixi", "run", "-e", "default", "extract_images",
-            "--video", video,
-            "--output", str(output),
-            "--resolution", str(extract_cfg["resolution"]),
+        air_camchain = to_path(self.housing_cfg["air_calibration_dir"]) / "calibration-camchain.yaml"
+        params = to_path(self.housing_cfg.get("params", "files/housing.yaml"))
+        for f in (air_camchain, params):
+            if not f.is_file():
+                fail(f"Housing input not found: {f}")
+
+        pixi("uwsfm", "pinax-post-install")
+        pixi("uwsfm", "build-no-display-stub")
+        # uwsfm tools try to open windows; the stub makes them work headless.
+        env = {**os.environ, "LD_PRELOAD": str(SCRIPTS_DIR / "no_display.so")}
+
+        # uwsfm tools drop d0.yaml / undistort_map.yaml in the cwd (or next to their input),
+        # so run them inside a scratch folder and move the results out.
+        work = self.out / "housing"
+        work.mkdir(parents=True, exist_ok=True)
+
+        for i in range(self.n):
+            synced, undistorted = self.synced_dirs[i], self.undistorted_dirs[i]
+            calibration = work / f"calibration_cam{i}.yaml"
+            d0 = work / f"d0_cam{i}.yaml"
+            undistort_map = self.out / f"undistort_map_cam{i}.yaml"
+
+            run_script("camchain_to_calibration.py",
+                       "--camchain", air_camchain, "--april", self.target, "--housing", params,
+                       "--camera", f"cam{i}", "--output", calibration)
+
+            pixi("uwsfm", "housing_calib", calibration, synced, env=env, cwd=work)
+            move(work / "d0.yaml", d0)
+            pixi("uwsfm", "python", REPO_ROOT / "pinax" / "scripts" / "d0_estimation.py", "--cfg", d0,
+                 env=env, cwd=work)
+
+            images = list_images(synced)
+            if not images:
+                fail(f"No synced images in {synced}")
+            pixi("uwsfm", "undistort_estim", calibration, images[0], d0, env=env, cwd=work)
+            move(work / "undistort_map.yaml", undistort_map)
+
+            if undistorted.exists():
+                shutil.rmtree(undistorted)
+            undistorted.mkdir(parents=True)
+            pixi("uwsfm", "undistorter", undistort_map, synced, undistorted, env=env, cwd=work)
+
+    def calibrate(self) -> None:
+        guesses = self.calib_cfg.get("focal_length_guesses") or []
+        if guesses and len(guesses) != self.n:
+            fail(f"calibrate.focal_length_guesses has {len(guesses)} values but there are {self.n} cameras.")
+        manual_init = bool(guesses) or bool(self.calib_cfg.get("manual_focal_length_init", False))
+        # With manual init Kalibr asks for one focal length per camera on stdin; feed the guesses if given.
+        input_text = "\n".join(str(v) for v in guesses) + "\n" if guesses else None
+
+        cmd = [f"images_folder_{i}={d}" for i, d in enumerate(self.calib_image_dirs)]
+        cmd += [
+            f"output_folder={self.out}",
+            f"target={self.target}",
+            f"freq={self.calib_cfg.get('freq', 30)}",
+            f"camera_model={self.calib_cfg.get('camera_model', 'pinhole-radtan')}",
+            f"verbose={int(bool(self.calib_cfg.get('verbose', False)))}",
+            f"create_bag={int(bool(self.calib_cfg.get('create_bag', True)))}",
+            f"manual_focal_length_init={int(manual_init)}",
         ]
-        if extract_cfg.get("gray", True):
-            cmd.append("--gray")
-        if extract_cfg.get("skip") not in (None, ""):
-            cmd += ["--skip", str(extract_cfg["skip"])]
-        if extract_cfg.get("max_frames") not in (None, "", 0, "0"):
-            cmd += ["--max_frames", str(extract_cfg["max_frames"])]
+        # calibrate_multi_rig.sh sources catkin_ws/ relative to the repo root.
+        pixi("kalibr", "./scripts/calibrate_multi_rig.sh", *cmd, cwd=REPO_ROOT, input_text=input_text)
 
-        run(cmd)
+    def make_rig_config(self) -> None:
+        run_script("convert_camchain_to_rig_config.py", self.camchain, self.rig_config)
 
 
-def compute_image_dirs(cfg: dict) -> dict:
-    calib_dir = Path(cfg["calibration_dir"])
-    cameras = get_camera_list(cfg)
-    num_cameras = len(cameras)
-
-    raw_dirs = {i: calib_dir / f"cam{i}" for i in range(num_cameras)}
-
-    if num_cameras == 1:
-        return raw_dirs
-
-    synced_dir = calib_dir / "syncd"
-    return {i: synced_dir / f"cam{i}" for i in range(num_cameras)}
-
-
-def sync_images(cfg: dict) -> dict:
-    sync_cfg = cfg.get("sync", {})
-    calib_dir = Path(cfg["calibration_dir"])
-    cameras = get_camera_list(cfg)
-    num_cameras = len(cameras)
-
-    raw_dirs = {i: calib_dir / f"cam{i}" for i in range(num_cameras)}
-
-    if num_cameras == 1:
-        # Nothing to sync with a single camera.
-        return raw_dirs
-
-    # 2+ cameras: match_images_by_ns.py
-    synced_dir = calib_dir / "syncd"
-    cmd = ["python", "scripts/match_images_by_ns.py"]
-    for i in range(num_cameras):
-        cmd += [f"--images_folder_{i}", str(raw_dirs[i])]
-        cmd += [f"--colmap_folder_{i}", str(synced_dir / f"cam{i}")]
-    cmd += [
-        "--threshold-ns", str(sync_cfg.get("threshold_ns", 5_000_000)),
-        "--sample_step", str(sync_cfg.get("sample_step", 1)),
-    ]
-    run(cmd)
-    return {i: synced_dir / f"cam{i}" for i in range(num_cameras)}
-
-
-def calibrate(cfg: dict, image_dirs: dict) -> None:
-    calib_cfg = cfg["calibrate"]
-    num_cameras = len(image_dirs)
-
-    focal_length_guesses = calib_cfg.get("focal_length_guesses") or []
-    manual_init = bool(focal_length_guesses) or str(calib_cfg.get("manual_focal_length_init", 0)) == "1"
-
-    if focal_length_guesses and len(focal_length_guesses) != num_cameras:
-        print(f"[ERROR] focal_length_guesses has {len(focal_length_guesses)} values "
-              f"but there are {num_cameras} cameras - they must match.")
-        sys.exit(2)
-
-    env = os.environ.copy()
-
-    if manual_init:
-        env["KALIBR_MANUAL_FOCAL_LENGTH_INIT"] = "1"
-    else:
-        env.pop("KALIBR_MANUAL_FOCAL_LENGTH_INIT", None)
-
-    input_text = None
-    if manual_init and focal_length_guesses:
-        input_text = "\n".join(str(v) for v in focal_length_guesses) + "\n"
-
-    cmd = ["pixi", "run", "-e", "kalibr", "./scripts/calibrate_multi_rig.sh"]
-    for i in range(num_cameras):
-        cmd.append(f"images_folder_{i}={image_dirs[i]}")
-    cmd += [
-        f"output_folder={cfg['calibration_dir']}",
-        f"target={calib_cfg['target']}",
-        f"freq={calib_cfg['freq']}",
-        f"verbose={calib_cfg.get('verbose', 0)}",
-        f"create_bag={calib_cfg.get('create_bag', 1)}",
-        f"camera_model={calib_cfg.get('camera_model', 'pinhole-radtan')}",
-    ]
-
-    run(cmd, env=env, input_text=input_text)
-
-
-def postprocess(cfg: dict) -> None:
-    post_cfg = cfg.get("postprocess", {})
-    if not post_cfg.get("enabled", False):
-        return
-
-    calib_dir = Path(cfg["calibration_dir"])
-    camchain = calib_dir / "calibration-camchain.yaml"
-    output = post_cfg.get("output") or str(calib_dir / "calibration.yaml")
-
-    cmd = [
-        "python", "scripts/generate_calibration_yaml.py",
-        "--camchain", str(camchain),
-        "--april", post_cfg["april"],
-        "--housing", post_cfg["housing"],
-        "--output", str(output),
-        "--camera", post_cfg.get("camera", "cam0"),
-    ]
-    run(cmd)
-
-
-def generate_rig_config(cfg: dict, num_cameras: int) -> None:
-    rig_cfg = cfg.get("rig_config", {})
-    if not rig_cfg.get("enabled", False):
-        return
-
-    if num_cameras == 1:
-        print("(single camera - no rig/relative pose to generate, skipping rig_config.json)")
-        return
-
-    calib_dir = Path(cfg["calibration_dir"])
-    camchain = calib_dir / "calibration-camchain.yaml"
-    output = rig_cfg.get("output") or str(calib_dir / "rig_config.json")
-
-    cmd = ["pixi", "run", "-e", "default", "get_rig_config_json", str(camchain), str(output)]
-    run(cmd)
-
-
-DEFAULT_STEPS = ["extract", "sync", "calibrate", "postprocess", "rig_config"]
-
-
-def resolve_steps(cfg: dict, cli_steps: str | None) -> set[str]:
-    """Decide which steps actually run. CLI --steps overrides yaml `steps:`,
-    which in turn overrides the "run everything" default."""
-    if cli_steps:
-        requested = {s.strip() for s in cli_steps.split(",") if s.strip()}
-        unknown = requested - set(DEFAULT_STEPS)
-        if unknown:
-            print(f"[ERROR] Unknown step(s) in --steps: {unknown}. Valid steps: {DEFAULT_STEPS}")
-            sys.exit(2)
-        return requested
-
-    steps_cfg = cfg.get("steps")
-    if not steps_cfg:
-        return set(DEFAULT_STEPS)
-
-    return {name for name in DEFAULT_STEPS if steps_cfg.get(name, True)}
+def move(src: Path, dst: Path) -> None:
+    if not src.is_file():
+        fail(f"Expected output not found: {src}")
+    src.replace(dst)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Kalibr full pipeline runner")
-    parser.add_argument("--config", default="calibration_config.yaml", help="Path to the config yaml")
-    parser.add_argument("--steps", default=None,
-                         help=f"Comma-separated steps to run (default: all). Choices: {','.join(DEFAULT_STEPS)}. "
-     "Overrides the yaml `steps:` section.")
-    args = parser.parse_args()
+    cfg, active = load_config("Kalibr multi-camera rig calibration", STEPS, "configs/calibration.yaml")
+    calib = Calibration(cfg)
+    calib.out.mkdir(parents=True, exist_ok=True)
 
-    config_path = Path(args.config)
-    if not config_path.exists():
-        print(f"[ERROR] Config file not found: {config_path}")
-        sys.exit(1)
-
-    cfg = yaml.safe_load(config_path.read_text())
-    Path(cfg["calibration_dir"]).mkdir(parents=True, exist_ok=True)
-
-    active_steps = resolve_steps(cfg, args.steps)
-    print(f"Active steps: {sorted(active_steps, key=DEFAULT_STEPS.index)}\n")
-
-    num_cameras = len(get_camera_list(cfg))
-
-    if "extract" in active_steps:
-        print("=== 1/5: Extracting images ===")
-        extract_images(cfg)
-    else:
-        print("=== 1/5: Extracting images (skipped) ===")
-
-    if "sync" in active_steps:
-        print("=== 2/5: Syncing images ===")
-        image_dirs = sync_images(cfg)
-    else:
-        print("=== 2/5: Syncing images (skipped, using expected existing paths) ===")
-        image_dirs = compute_image_dirs(cfg)
-
-    if "calibrate" in active_steps:
-        print("=== 3/5: Running calibration ===")
-        calibrate(cfg, image_dirs)
-    else:
-        print("=== 3/5: Running calibration (skipped) ===")
-
-    if "postprocess" in active_steps:
-        print("=== 4/5: Generating final calibration.yaml (housing correction) ===")
-        postprocess(cfg)
-    else:
-        print("=== 4/5: Generating final calibration.yaml (skipped) ===")
-
-    if "rig_config" in active_steps:
-        print("=== 5/5: Generating rig_config.json ===")
-        generate_rig_config(cfg, num_cameras)
-    else:
-        print("=== 5/5: Generating rig_config.json (skipped) ===")
+    run_steps([
+        ("extract", "Extracting frames from videos", calib.extract),
+        ("sync", "Syncing frames by timestamp", calib.sync),
+        ("housing", "Underwater housing calibration / refraction removal", calib.housing),
+        ("calibrate", "Kalibr calibration", calib.calibrate),
+        ("rig_config", "Generating rig_config.json", calib.make_rig_config),
+    ], active)
 
     print("\nDone. Outputs:")
-    print(f"  {cfg['calibration_dir']}/calibration-camchain.yaml")
-    print(f"  {cfg['calibration_dir']}/calibration-results-cam.txt")
-    print(f"  {cfg['calibration_dir']}/calibration-report-cam.pdf")
-    if cfg.get("postprocess", {}).get("enabled", False):
-        out = cfg["postprocess"].get("output") or f"{cfg['calibration_dir']}/calibration.yaml"
-        print(f"  {out}  (final OPENCV+FLATPORT format)")
-    if cfg.get("rig_config", {}).get("enabled", False) and num_cameras > 1:
-        out = cfg["rig_config"].get("output") or f"{cfg['calibration_dir']}/rig_config.json"
-        print(f"  {out}")
+    for p in (calib.camchain, calib.out / "calibration-results-cam.txt",
+              calib.out / "calibration-report-cam.pdf", calib.rig_config):
+        print(f"  {p}")
 
 
 if __name__ == "__main__":

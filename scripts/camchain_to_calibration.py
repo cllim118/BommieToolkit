@@ -89,12 +89,14 @@ def main():
     parser.add_argument("--april", type=Path, required=True, help="Path to april.yaml")
     parser.add_argument("--housing", type=Path, required=True, help="Path to housing_params.yaml")
     parser.add_argument("--output", type=Path, default=Path("calibration.yaml"), help="Output path (default: calibration.yaml)")
-    parser.add_argument("--camera", choices=["cam0", "cam1"], default="cam0", help="Which camera to use")
+    parser.add_argument("--camera", default="cam0", help="Which camchain camera to use (cam0, cam1, ...)")
     args = parser.parse_args()
 
     # Camera Parameters
     camchain = load_yaml(args.camchain)
     cam = camchain.get(args.camera)
+    if cam is None:
+        sys.exit(f"{args.camera} not found in {args.camchain}")
 
     intrinsics = cam["intrinsics"]
     distortion = cam["distortion_coeffs"]
@@ -105,7 +107,6 @@ def main():
     housing = load_yaml(args.housing)
 
     normal = [0.0, 0.0, 1.0]
-    type = housing["housing"]
     int_dist = housing["distance_to_glass"]
     int_thick = housing["glass_thickness"]
     ng = housing["glass_refractive_index"]

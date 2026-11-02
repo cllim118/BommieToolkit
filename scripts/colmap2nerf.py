@@ -27,6 +27,7 @@ def parse_args():
 	parser = argparse.ArgumentParser(description="Convert a text colmap export to nerf format transforms.json.")
 	parser.add_argument("--images", default="images", required=True, help="Input path to the images.")
 	parser.add_argument("--masks", default=None, required=False, help="Input path to the masks.")
+	parser.add_argument("--static_mask", action="append", default=[], help="Fixed mask used for every image (white = keep, black = ignore), written as mask_path in transforms.json. PATH applies to all images, FOLDER=PATH only to images under FOLDER (e.g. rig1/camera1=mask_cam0.png). Repeatable.")
 	parser.add_argument("--text", default="colmap_text", required=True, help="Input path to the colmap text files (set automatically if --run_colmap is used).")
 	parser.add_argument("--aabb_scale", default=32, choices=["1", "2", "4", "8", "16", "32", "64", "128"], help="Large scene scale factor. 1=scene fits in unit cube; power of 2 up to 128")
 	parser.add_argument("--skip_early", default=0, help="Skip this many images from the start.")
@@ -103,6 +104,11 @@ if __name__ == "__main__":
 	SKIP_EARLY = int(args.skip_early)
 	IMAGE_FOLDER = args.images
 	MASK_FOLDER = args.masks
+	# image sub-folder -> mask file ("" = all images)
+	STATIC_MASKS = {folder: path for folder, _, path in (m.rpartition("=") for m in args.static_mask)}
+	if MASK_FOLDER is not None and STATIC_MASKS:
+		print("--masks and --static_mask cannot be combined.")
+		sys.exit(1)
 	TEXT_FOLDER = args.text
 	OUT_PATH = args.out
 	OUT_DIR = Path(OUT_PATH).resolve().parent
@@ -277,12 +283,19 @@ if __name__ == "__main__":
 
 					img_with_alpha = np.concatenate((img, mask), axis=-1)
 					img_with_alpha = Image.fromarray(img_with_alpha.astype(np.uint8), mode="RGBA")
-					relative_masked_img_path = str(f"./images/masked_images/{base_name}.png")
 					
 					masked_img_absolute_path = os.path.join(Path(MASK_FOLDER).parent, f"masked_images/{base_name}.png")
 					Path(masked_img_absolute_path).parent.mkdir(parents=True, exist_ok=True)
 					img_with_alpha.save(masked_img_absolute_path)
-					frame["file_path"] = relative_masked_img_path
+					frame["file_path"] = output_relative_path(masked_img_absolute_path)
+
+				if STATIC_MASKS:
+					image_name = "_".join(elems[9:])
+					static_mask = STATIC_MASKS.get(os.path.dirname(image_name), STATIC_MASKS.get(""))
+					if static_mask is None:
+						print(f"No --static_mask given for {image_name}")
+						sys.exit(1)
+					frame["mask_path"] = output_relative_path(static_mask)
 
 				if len(cameras) != 1:
 					frame.update(cameras[int(elems[8])])

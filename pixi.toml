@@ -8,16 +8,16 @@ version = "0.1.0"
 [tasks]
 extract_images = "python scripts/vid2imgs.py"
 match_images_by_ns = "python scripts/match_images_by_ns.py"
-get_rig_config_json= "python scripts/convert_camchain_to_rig_config.py"
-colmap2nerf = { cmd = "python ../scripts/colmap2nerf.py", cwd = "monkey_output" }
-extract_images_dev = "python scripts/vid2imgs_dev.py"
+get_rig_config_json = "python scripts/convert_camchain_to_rig_config.py"
+colmap2nerf = "python scripts/colmap2nerf.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
 transform_splats = "python scripts/transform_splats.py"
 
-[tasks.run-full-reconstruction]
-cmd = "python scripts/run_full_reconstruction.py --config {{ config }}"
-args = [{ arg = "config", default = "configs/reconstruction.yaml" }]
-
+# Yaml-driven pipeline: calibration -> colmap -> 3dgs (one config file per stage, see configs/)
+#   pixi run run-colmap [config.yaml] [--steps colmap,colmap2nerf]
+run-calibration = "python scripts/run_calibration.py"
+run-colmap = "python scripts/run_colmap.py"
+run-3dgs = "python scripts/run_3dgs.py"
 
 [dependencies]
 python = "*"
@@ -47,52 +47,7 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 create_catkin_ws = "rm -rf catkin_ws && mkdir -p catkin_ws/src && cd catkin_ws && catkin init"
 git-clone = {cmd = "git clone https://github.com/Tobias-Fischer/kalibr.git catkin_ws/src/kalibr", depends-on = ["create_catkin_ws"] }
 build = {cmd = "catkin build -j8 --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.20 -DCMAKE_CXX_STANDARD=14", cwd="catkin_ws", depends-on = ["git-clone"] }
-kalibr-calibrate-stereo-rig = {cmd = "./scripts/calibrate_stereo_rig.sh"}
-
-[feature.kalibr.tasks.calibrate-stereo-rig-from-videos]
-args = [
-  { arg = "calibration_dir", default = "calibration_output" },
-  { arg = "calibration_resolution", default = "medium", choices = ["lowest", "low", "medium", "high"] },
-  { arg = "video_left", default = "videos/cal_left.MP4" },
-  { arg = "video_right", default = "videos/cal_right.MP4" },
-  { arg = "calibration_skip", default = "5.0" },
-  { arg = "calibration_max_frames", default = "0" },
-  { arg = "calibration_target", default = "files/april_10x6.yaml" },
-  { arg = "calibration_freq", default = "30" },
-]
-depends-on = [
-  { task = "extract-calibration-left", args = [
-    { calibration_dir = "{{ calibration_dir }}" },
-    { calibration_resolution = "{{ calibration_resolution }}" },
-    { video_left = "{{ video_left }}" },
-    { calibration_skip = "{{ calibration_skip }}" },
-    { calibration_max_frames = "{{ calibration_max_frames }}" },
-  ] },
-  { task = "extract-calibration-right", args = [
-    { calibration_dir = "{{ calibration_dir }}" },
-    { calibration_resolution = "{{ calibration_resolution }}" },
-    { video_right = "{{ video_right }}" },
-    { calibration_skip = "{{ calibration_skip }}" },
-    { calibration_max_frames = "{{ calibration_max_frames }}" },
-  ] },
-]
-inputs = [
-  "scripts/calibrate_stereo_rig.sh",
-  "{{ calibration_target }}",
-  "{{ calibration_dir }}/cam0/**/*",
-  "{{ calibration_dir }}/cam1/**/*",
-]
-outputs = [
-  "{{ calibration_dir }}/calibration.bag",
-  "{{ calibration_dir }}/calibration-camchain.yaml",
-  "{{ calibration_dir }}/calibration-results-cam.txt",
-  "{{ calibration_dir }}/calibration-report-cam.pdf",
-]
-cmd = "./scripts/calibrate_stereo_rig.sh images_folder_left={{ calibration_dir }}/cam0 images_folder_right={{ calibration_dir }}/cam1 output_folder={{ calibration_dir }} verbose=0 create_bag=1 target={{ calibration_target }} freq={{ calibration_freq }}"
-
-[feature.kalibr.tasks.calibrate]
-cmd = "python scripts/run_calibration.py --config {{ config }}"
-args = [{ arg = "config", default = "configs/calibration.yaml" }]
+calibrate-rig = "./scripts/calibrate_multi_rig.sh"
 
 [feature.kalibr.dependencies]
 python = "3.12.*"
@@ -244,15 +199,13 @@ openimageio = "*"
 [feature.colmap.target.linux-64.dependencies]
 mkl = "2024.*"
 colmap = { build="*cuda*", version = "=4.0.4" }
+cudnn = ">=9,<10"
 
 [feature.colmap.target.osx-arm64.dependencies]
 colmap = { version = "=4.0.4" }
 
 [feature.colmap.target.osx-64.dependencies]
 colmap = { version = "=4.0.4" }
-
-[feature.colmap.tasks]
-
 
 ########################################################################################################################
 ########################################################################################################################
@@ -264,8 +217,6 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 [feature.nerfstudio.dependencies]
 git = "*"
 
-[feature.nerfstudio.tasks]
-
 [feature.nerfstudio.tasks.nerfstudio-clone]
 outputs = ["nerfstudio/pixi.toml"]
 cmd = "test -d nerfstudio || git clone https://github.com/Tobias-Fischer/nerfstudio.git nerfstudio"
@@ -274,7 +225,7 @@ cmd = "test -d nerfstudio || git clone https://github.com/Tobias-Fischer/nerfstu
 depends-on = ["nerfstudio-clone"]
 inputs = ["nerfstudio/pixi.toml", "nerfstudio/pyproject.toml"]
 outputs = ["nerfstudio/.bommie/post-install.stamp"]
-cmd = "mkdir -p nerfstudio/.bommie && touch nerfstudio/.bommie/post-install.stamp"
+cmd = "pixi run --manifest-path nerfstudio/pixi.toml post-install && mkdir -p nerfstudio/.bommie && touch nerfstudio/.bommie/post-install.stamp"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -319,9 +270,6 @@ platforms = ["linux-64"]
 
 [feature.splatpcl.dependencies]
 git = "*"
-
-[feature.splatpcl.tasks]
-
 
 [feature.splatpcl.tasks.splat2pointcloud-clone]
 outputs = ["3dgs2pc/pixi.toml"]

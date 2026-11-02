@@ -46,11 +46,11 @@ output_folder="${output_folder:-calibration_ws}"
 verbose="${verbose:-0}"
 create_bag="${create_bag:-1}"
 camera_model="${camera_model:-pinhole-radtan}"
-manual_focal_length_init="${KALIBR_MANUAL_FOCAL_LENGTH_INIT:-0}"
+manual_focal_length_init="${manual_focal_length_init:-${KALIBR_MANUAL_FOCAL_LENGTH_INIT:-0}}"
 
 num_cameras=${#images_folder[@]}
 if [ "$num_cameras" -lt 1 ]; then
-  echo "Need at least one image_folder_N=path argument." >&2
+  echo "Need at least one images_folder_N=path argument." >&2
   exit 2
 fi
 
@@ -128,10 +128,10 @@ for ((i=0; i<num_cameras; i++)); do
   topics+=("/cam${i}/image_raw")
   models+=("$camera_model")
 done
- 
+
 echo "Topics: ${topics[*]}"
 echo "Models: ${models[*]}"
- 
+
 "${kalibr_bin}/kalibr_calibrate_cameras" \
   --target "$target" \
   --models "${models[@]}" \
@@ -139,10 +139,10 @@ echo "Models: ${models[*]}"
   --bag "$output_bag" \
   --bag-freq "$freq" \
   --dont-show-report ${verbose_cmd}
- 
+
 if [ ! -f "$expected_camchain" ]; then
   echo "Kalibr completed without producing expected camchain: $expected_camchain" >&2
   exit 1
 fi
- 
+
 echo "Done. Result: $expected_camchain"
