@@ -13,10 +13,11 @@
 
 ## Pipeline
 
-The toolkit runs in three stages. Each stage is driven by **one yaml file** (templates in `configs/`):
+The toolkit runs in four stages. Each stage is driven by **one yaml file** (templates in `configs/`):
 
 | Stage | Command | Config | Main output |
 |---|---|---|---|
+| Image extraction | `pixi run run-images <cfg>` | `configs/images.yaml` | `synced/cam{i}` |
 | Rig calibration (Kalibr) | `pixi run run-calibration <cfg>` | `configs/calibration.yaml` | `calibration-camchain.yaml`, `rig_config.json` |
 | COLMAP reconstruction | `pixi run run-colmap <cfg>` | `configs/colmap.yaml` | `sparse/0`, `transforms.json` |
 | Gaussian splatting (nerfstudio) | `pixi run run-3dgs <cfg>` | `configs/3dgs.yaml` | `splat_metric.ply` |
@@ -32,13 +33,28 @@ Each config has a `steps:` section to choose which steps run. Override it from t
 re-run only part of a stage:
 
 ```bash
+pixi run run-images configs/local/my_scene_images.yaml --steps sync
 pixi run run-calibration configs/local/my_rig.yaml --steps calibrate,rig_config
 pixi run run-colmap configs/local/my_scene.yaml --steps colmap,colmap2nerf
 pixi run run-3dgs configs/local/my_scene_3dgs.yaml --steps export,transform
 ```
 
-Stages are chained through paths: `colmap.yaml` points at the calibration `output_dir` (`calibration_dir`),
-and `3dgs.yaml` points at the COLMAP `output_dir` (`colmap_dir`).
+Stages are chained through paths: `calibration.yaml` and `colmap.yaml` point at a `run-images` `output_dir`
+(`images_dir`), `colmap.yaml` points at the calibration `output_dir` (`calibration_dir`), and `3dgs.yaml`
+points at the COLMAP `output_dir` (`colmap_dir`).
+
+### 0. Image extraction
+
+Run `run-images` once per video set, with one config each: the calibration target videos (e.g.
+`output_dir: images_calibration`) and the scene videos (e.g. `output_dir: images_scene`).
+
+`run-images` steps:
+- `extract`: video → frames (`{output_dir}/frames/cam{i}`), named by the GoPro timecode in ns.
+- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/synced/cam{i}`);
+  `sync.sample_step` subsamples the matched sets.
+
+Any number of cameras is supported; `cam0` (first entry in `cameras:`) is the reference. For calibration,
+`extract.gray: true`, `extract.skip: 5.0` and `sync.sample_step: 3` are good defaults.
 
 ### 1. Rig calibration
 
@@ -47,28 +63,25 @@ Build Kalibr once:
 pixi run -e kalibr build
 ```
 
-`run-calibration` steps:
-- `extract`: video → frames (`{output_dir}/cam{i}`), named by the GoPro timecode in ns.
-- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/syncd/cam{i}`).
+`run-calibration` reads the synced frames from `images_dir`. Steps:
 - `housing`: underwater refraction removal (only if `housing.enabled`, see below).
 - `calibrate`: Kalibr multi-camera calibration → `calibration-camchain.yaml`, report PDF.
 - `rig_config`: camchain → COLMAP `rig_config.json`.
 
-Any number of cameras is supported; `cam0` (first entry in `cameras:`) is the reference.
 - `calibrate.verbose: true` shows Kalibr's plots, which needs a display.
 - `calibrate.create_bag: false` reuses an existing `calibration.bag`.
 - If Kalibr fails to initialise the focal length, `manual_focal_length_init: true` makes it ask for one per
   camera; a good guess is half the image height. Set `focal_length_guesses: [...]` to answer automatically.
 
 **Underwater housing (flat port).** First calibrate the rig in air. Then run a second calibration on the
-underwater target videos with `housing.enabled: true` and `housing.air_calibration_dir` pointing at the in-air
+underwater target frames with `housing.enabled: true` and `housing.air_calibration_dir` pointing at the in-air
 calibration. This estimates the refraction per camera (uwsfm / Pinax), writes `undistort_map_cam{i}.yaml`,
 undistorts the frames and re-calibrates on them.
 
 ### 2. COLMAP reconstruction
 
-`run-colmap` steps:
-- `extract`, `sync`: as above, into `{output_dir}/images/rig1/camera{i+1}`.
+`run-colmap` reads the synced frames from `images_dir`. Steps:
+- `import`: copies them into `{output_dir}/images/rig1/camera{i+1}`.
 - `undistort`: applies the housing undistort maps from `calibration_dir` (only if `refraction_removal: true`).
 - `masks`: (only if `use_masks: true`) opens the SAM3 app at http://0.0.0.0:7997. It needs a Hugging Face
   login first (`pixi run -e sam hf auth login`). Save masks to `{output_dir}/masks`, mirroring the `images` layout.

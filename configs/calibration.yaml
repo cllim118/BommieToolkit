@@ -1,5 +1,6 @@
 # ===================================================
-# Rig calibration (Kalibr)
+# Rig calibration (Kalibr): synced frames -> camchain + rig_config.json
+# Extract the frames first with run-images (configs/images.yaml, calibration settings).
 #   pixi run run-calibration configs/calibration.yaml
 #   pixi run run-calibration configs/calibration.yaml --steps calibrate,rig_config
 # Relative paths are resolved from the repo root.
@@ -7,28 +8,15 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  extract: true      # videos -> {output_dir}/cam{i}
-  sync: true         # timestamp-matched frames -> {output_dir}/syncd/cam{i}
   housing: true      # no-op unless housing.enabled
   calibrate: true    # Kalibr -> {output_dir}/calibration-camchain.yaml
   rig_config: true   # -> {output_dir}/rig_config.json
 
 output_dir: calibration_output
 
-# One entry per camera, in rig order (cam0 is the reference camera).
-cameras:
-  - video: videos/cal_cam0.MP4
-  - video: videos/cal_cam1.MP4
-
-extract:
-  resolution: medium   # lowest(~320x240) | low(~640x480) | medium(~1920x1080) | high(~3840x2160)
-  gray: true
-  skip: 5.0            # seconds to skip at the start of each video
-  max_frames: 0        # 0 = no limit
-
-sync:
-  threshold_ns: 5000000   # max timestamp difference between matched frames
-  sample_step: 3          # keep every Nth matched set (subsample here, not at extraction)
+# Output of run-images for the calibration target videos. Kalibr runs on {images_dir}/synced/cam{i}
+# (cam0 is the reference camera).
+images_dir: images_calibration
 
 calibrate:
   target: files/april_10x6.yaml
@@ -40,8 +28,8 @@ calibrate:
   focal_length_guesses: []       # e.g. [1400, 1400] - answers the prompt automatically
 
 # Underwater refraction removal (flat port). When enabled, the cameras above are the
-# *underwater* target videos and Kalibr runs on the undistorted frames.
-# Needs a previous in-air calibration of the same rig (same extract.resolution).
+# *underwater* target frames (images_dir) and Kalibr runs on the undistorted frames.
+# Needs a previous in-air calibration of the same rig (same run-images extract.resolution).
 housing:
   enabled: false
   air_calibration_dir: calibration_output_air   # folder with the in-air calibration-camchain.yaml

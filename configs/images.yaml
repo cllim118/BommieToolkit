@@ -1,0 +1,33 @@
+# ===================================================
+# Image extraction: rig videos -> timestamp-synced frames
+#   pixi run run-images configs/images.yaml
+#   pixi run run-images configs/images.yaml --steps sync
+# Relative paths are resolved from the repo root.
+#
+# Run it once per video set (one config each), e.g. the calibration target videos and the scene videos:
+#   images_calibration  -> calibration.yaml `images_dir`
+#   images_scene        -> colmap.yaml `images_dir`
+# Recommended for calibration: extract.gray: true, extract.skip: 5.0, sync.sample_step: 3
+# ===================================================
+
+# Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
+steps:
+  extract: true   # videos -> {output_dir}/frames/cam{i}
+  sync: true      # timestamp-matched frames -> {output_dir}/synced/cam{i}
+
+output_dir: images_scene
+
+# One entry per camera, in rig order (cam0 is the reference camera).
+cameras:
+  - video: videos/scene_cam0.MP4
+  - video: videos/scene_cam1.MP4
+
+extract:
+  resolution: medium   # lowest(~320x240) | low(~640x480) | medium(~1920x1080) | high(~3840x2160)
+  gray: false
+  skip: 0.0            # seconds to skip at the start of each video
+  max_frames: 0        # 0 = no limit
+
+sync:
+  threshold_ns: 5000000   # max timestamp difference between matched frames
+  sample_step: 1          # keep every Nth matched set (subsample here, not at extraction)

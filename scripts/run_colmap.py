@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Rig videos -> COLMAP sparse reconstruction -> transforms.json, driven by a single yaml config.
+Synced rig frames -> COLMAP sparse reconstruction -> transforms.json, driven by a single yaml config.
+
+Input: the synced frames of run_images.py ({images_dir}/synced/cam{i}).
 
 Steps (toggle with the yaml `steps:` section or --steps):
-  extract      videos -> {output_dir}/frames/cam{i}
-  sync         keep timestamp-matched frames -> {output_dir}/images/rig1/camera{i+1}
+  import       copy the synced frames -> {output_dir}/images/rig1/camera{i+1}
   undistort    (only if refraction_removal) apply the housing undistort maps from calibration_dir in place
   masks        (only if use_masks) launch the interactive SAM3 app; save masks to {output_dir}/masks
   colmap       rig_config.json (scaled to the frames) -> feature extraction -> rig config -> matching
@@ -19,10 +20,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from common import (extract_images, fail, get_videos, list_images, load_config, pixi, run_script,
-                    run_steps, sync_images, to_path)
+from common import fail, get_synced_dirs, list_images, load_config, pixi, run_script, run_steps, to_path
 
-STEPS = ["extract", "sync", "undistort", "masks", "colmap", "colmap2nerf"]
+STEPS = ["import", "undistort", "masks", "colmap", "colmap2nerf"]
 
 
 class Reconstruction:
@@ -30,8 +30,8 @@ class Reconstruction:
         self.cfg = cfg
         self.out = to_path(cfg["output_dir"])
         self.calib_dir = to_path(cfg["calibration_dir"])
-        self.videos = get_videos(cfg)
-        self.n = len(self.videos)
+        self.synced_dirs = get_synced_dirs(cfg)
+        self.n = len(self.synced_dirs)
         self.colmap_cfg = cfg.get("colmap", {})
         self.use_masks = bool(cfg.get("use_masks", False))
         # Fixed mask for every frame: one path for all cameras, or a list with one per camera.
@@ -44,7 +44,6 @@ class Reconstruction:
             fail("use_masks (SAM, per image) and static_mask cannot be combined.")
         self.static_masks = [to_path(p) for p in static] * (self.n if len(static) == 1 else 1)
 
-        self.frame_dirs = [self.out / "frames" / f"cam{i}" for i in range(self.n)]
         # Must match the image_prefix written by convert_camchain_to_rig_config.py
         self.images = self.out / "images"
         self.image_dirs = [self.images / "rig1" / f"camera{i + 1}" for i in range(self.n)]
@@ -59,11 +58,15 @@ class Reconstruction:
         self.mesh = self.model_txt / "mesh.ply"
         self.transforms = self.out / "transforms.json"
 
-    def extract(self) -> None:
-        extract_images(self.videos, self.frame_dirs, self.cfg.get("extract", {}))
-
-    def sync(self) -> None:
-        sync_images(self.frame_dirs, self.image_dirs, self.cfg.get("sync", {}))
+    def import_images(self) -> None:
+        """Copy (not link) the frames: the undistort step rewrites them in place."""
+        for src, dst in zip(self.synced_dirs, self.image_dirs):
+            if dst.exists():
+                shutil.rmtree(dst)
+            dst.mkdir(parents=True)
+            for image in list_images(src):
+                shutil.copy2(image, dst / image.name)
+            print(f"{src} -> {dst}")
 
     def undistort(self) -> None:
         if not self.cfg.get("refraction_removal", False):
@@ -191,18 +194,17 @@ def colmap(*args) -> None:
 def first_frame(image_dir: Path) -> Path:
     images = list_images(image_dir) if image_dir.is_dir() else []
     if not images:
-        fail(f"No frames in {image_dir} - run the sync step first.")
+        fail(f"No frames in {image_dir} - run the import step first.")
     return images[0]
 
 
 def main() -> None:
-    cfg, active = load_config("Rig videos -> COLMAP reconstruction -> transforms.json", STEPS, "configs/colmap.yaml")
+    cfg, active = load_config("Synced rig frames -> COLMAP reconstruction -> transforms.json", STEPS, "configs/colmap.yaml")
     rec = Reconstruction(cfg)
     rec.out.mkdir(parents=True, exist_ok=True)
 
     run_steps([
-        ("extract", "Extracting frames from videos", rec.extract),
-        ("sync", "Syncing frames by timestamp", rec.sync),
+        ("import", "Importing synced frames", rec.import_images),
         ("undistort", "Removing refraction (housing undistort maps)", rec.undistort),
         ("masks", "Creating masks with SAM3", rec.make_masks),
         ("colmap", "COLMAP reconstruction", rec.colmap),

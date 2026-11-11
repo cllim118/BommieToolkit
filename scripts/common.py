@@ -92,6 +92,28 @@ def get_videos(cfg: dict) -> list[Path]:
     return [to_path(cam["video"]) for cam in cameras]
 
 
+def synced_dirs(images_dir: Path, n: int) -> list[Path]:
+    """Per-camera synced frame folders written by run_images.py."""
+    return [images_dir / "synced" / f"cam{i}" for i in range(n)]
+
+
+def get_synced_dirs(cfg: dict) -> list[Path]:
+    """Synced frame folders of the run_images.py output referenced by `images_dir` (cam0, cam1, ...)."""
+    if not cfg.get("images_dir"):
+        fail("Config must set `images_dir` (output_dir of run-images).")
+    images_dir = to_path(cfg["images_dir"])
+    n = 0
+    while (images_dir / "synced" / f"cam{n}").is_dir():
+        n += 1
+    if n == 0:
+        fail(f"No synced frames in {images_dir / 'synced'} - run `pixi run run-images` first.")
+    dirs = synced_dirs(images_dir, n)
+    for d in dirs:
+        if not list_images(d):
+            fail(f"No images in {d} - run `pixi run run-images` first.")
+    return dirs
+
+
 def extract_images(videos: list[Path], out_dirs: list[Path], extract_cfg: dict) -> None:
     """Video -> timestamp-named frames (scripts/vid2imgs.py), one output folder per camera."""
     for video, out_dir in zip(videos, out_dirs):

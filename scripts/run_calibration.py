@@ -2,9 +2,9 @@
 """
 Multi-camera rig calibration with Kalibr, driven by a single yaml config.
 
+Input: the synced frames of run_images.py ({images_dir}/synced/cam{i}).
+
 Steps (toggle with the yaml `steps:` section or --steps):
-  extract     videos -> {output_dir}/cam{i}
-  sync        keep timestamp-matched frames -> {output_dir}/syncd/cam{i}
   housing     (only if housing.enabled) underwater refraction removal starting from an in-air
               calibration -> {output_dir}/undistort_map_cam{i}.yaml + {output_dir}/undistorted/cam{i}
   calibrate   Kalibr on the synced (or undistorted) frames -> {output_dir}/calibration-camchain.yaml
@@ -15,39 +15,42 @@ Usage:
 """
 import os
 import shutil
+from functools import cached_property
 from pathlib import Path
 
-from common import (REPO_ROOT, SCRIPTS_DIR, extract_images, fail, get_videos, list_images,
-                    load_config, pixi, run, run_script, run_steps, sync_images, to_path)
+from common import (REPO_ROOT, SCRIPTS_DIR, fail, get_synced_dirs, list_images, load_config, pixi,
+                    run_script, run_steps, to_path)
 
-STEPS = ["extract", "sync", "housing", "calibrate", "rig_config"]
+STEPS = ["housing", "calibrate", "rig_config"]
 
 
 class Calibration:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.out = to_path(cfg["output_dir"])
-        self.videos = get_videos(cfg)
-        self.n = len(self.videos)
         self.calib_cfg = cfg.get("calibrate", {})
         self.housing_cfg = cfg.get("housing") or {}
         self.target = to_path(self.calib_cfg.get("target", "files/april_10x6.yaml"))
 
-        self.raw_dirs = [self.out / f"cam{i}" for i in range(self.n)]
-        self.synced_dirs = [self.out / "syncd" / f"cam{i}" for i in range(self.n)]
-        self.undistorted_dirs = [self.out / "undistorted" / f"cam{i}" for i in range(self.n)]
         self.camchain = self.out / "calibration-camchain.yaml"
         self.rig_config = self.out / "rig_config.json"
+
+    # Resolved on first use, so steps that don't need frames (e.g. rig_config) run without them.
+    @cached_property
+    def synced_dirs(self) -> list[Path]:
+        return get_synced_dirs(self.cfg)
+
+    @property
+    def n(self) -> int:
+        return len(self.synced_dirs)
+
+    @property
+    def undistorted_dirs(self) -> list[Path]:
+        return [self.out / "undistorted" / f"cam{i}" for i in range(self.n)]
 
     @property
     def calib_image_dirs(self) -> list[Path]:
         return self.undistorted_dirs if self.housing_cfg.get("enabled", False) else self.synced_dirs
-
-    def extract(self) -> None:
-        extract_images(self.videos, self.raw_dirs, self.cfg.get("extract", {}))
-
-    def sync(self) -> None:
-        sync_images(self.raw_dirs, self.synced_dirs, self.cfg.get("sync", {}))
 
     def housing(self) -> None:
         """Port of the old housing_calibration.sh: per camera, estimate the flat-port refraction
@@ -136,8 +139,6 @@ def main() -> None:
     calib.out.mkdir(parents=True, exist_ok=True)
 
     run_steps([
-        ("extract", "Extracting frames from videos", calib.extract),
-        ("sync", "Syncing frames by timestamp", calib.sync),
         ("housing", "Underwater housing calibration / refraction removal", calib.housing),
         ("calibrate", "Kalibr calibration", calib.calibrate),
         ("rig_config", "Generating rig_config.json", calib.make_rig_config),

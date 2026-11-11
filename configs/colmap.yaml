@@ -1,5 +1,6 @@
 # ===================================================
-# COLMAP reconstruction: rig videos -> sparse model -> transforms.json
+# COLMAP reconstruction: synced frames -> sparse model -> transforms.json
+# Extract the frames first with run-images (configs/images.yaml).
 #   pixi run run-colmap configs/colmap.yaml
 #   pixi run run-colmap configs/colmap.yaml --steps colmap,colmap2nerf
 # Relative paths are resolved from the repo root.
@@ -7,14 +8,16 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  extract: true        # videos -> {output_dir}/frames/cam{i}
-  sync: true           # matched frames -> {output_dir}/images/rig1/camera{i+1}
+  import: true         # {images_dir}/synced/cam{i} -> {output_dir}/images/rig1/camera{i+1}
   undistort: true      # no-op unless refraction_removal
   masks: true          # no-op unless use_masks (interactive SAM3 app)
   colmap: true         # -> {output_dir}/database.db, {output_dir}/sparse/0
   colmap2nerf: true    # -> {output_dir}/transforms.json
 
 output_dir: colmap_output
+
+# Output of run-images for the scene videos. Cameras in the same order as in the calibration.
+images_dir: images_scene
 
 # Output of run-calibration. Its calibration-camchain.yaml gives the rig intrinsics/extrinsics.
 calibration_dir: calibration_output
@@ -31,21 +34,6 @@ use_masks: false
 #   static_mask: files/mask.png
 #   static_mask: [files/mask_cam0.png, files/mask_cam1.png]
 static_mask: null
-
-# One entry per camera, in the same order as in the calibration.
-cameras:
-  - video: videos/scene_cam0.MP4
-  - video: videos/scene_cam1.MP4
-
-extract:
-  resolution: medium   # lowest | low | medium | high
-  gray: false
-  skip: 0.0
-  max_frames: 0
-
-sync:
-  threshold_ns: 5000000
-  sample_step: 1        # keep every Nth matched set (subsample here, not at extraction)
 
 colmap:
   feature_type: SIFT              # SIFT | ALIKED_N16ROT

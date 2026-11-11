@@ -13,8 +13,9 @@ colmap2nerf = "python scripts/colmap2nerf.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
 transform_splats = "python scripts/transform_splats.py"
 
-# Yaml-driven pipeline: calibration -> colmap -> 3dgs (one config file per stage, see configs/)
+# Yaml-driven pipeline: images -> calibration -> colmap -> 3dgs (one config file per stage, see configs/)
 #   pixi run run-colmap [config.yaml] [--steps colmap,colmap2nerf]
+run-images = "python scripts/run_images.py"
 run-calibration = "python scripts/run_calibration.py"
 run-colmap = "python scripts/run_colmap.py"
 run-3dgs = "python scripts/run_3dgs.py"

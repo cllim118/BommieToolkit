@@ -41,6 +41,7 @@ jobs:
 
       - name: Run pipeline runners --help
         run: |
+          pixi run run-images --help
           pixi run run-calibration --help
           pixi run run-colmap --help
           pixi run run-3dgs --help
