@@ -14,7 +14,7 @@ steps:
 
 output_dir: calibration_output
 
-# Output of run-images for the calibration target videos. Kalibr runs on {images_dir}/syncd/cam{i}
+# Output of run-images for the calibration target videos. Kalibr runs on {images_dir}/syncd/rig1/cam{i}
 # (cam0 is the reference camera).
 images_dir: images_calibration
 

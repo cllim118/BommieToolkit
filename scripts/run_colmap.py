@@ -2,7 +2,7 @@
 """
 Synced rig frames -> COLMAP sparse reconstruction -> transforms.json, driven by a single yaml config.
 
-Input: the synced frames of run_images.py ({images_dir}/syncd/cam{i}) - or of run_refraction.py for underwater
+Input: the synced frames of run_images.py ({images_dir}/syncd/rig1/cam{i}) - or of run_refraction.py for underwater
 data, whose output_dir is then both images_dir and calibration_dir.
 
 Steps (toggle with the yaml `steps:` section or --steps):

@@ -2,7 +2,7 @@
 """
 Multi-camera rig calibration with Kalibr, driven by a single yaml config.
 
-Input: the synced frames of run_images.py ({images_dir}/syncd/cam{i}).
+Input: the synced frames of run_images.py ({images_dir}/syncd/rig1/cam{i}).
 
 Steps (toggle with the yaml `steps:` section or --steps):
   calibrate   Kalibr on the synced frames -> {output_dir}/calibration-camchain.yaml

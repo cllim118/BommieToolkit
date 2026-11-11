@@ -10,7 +10,7 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  correct: true    # Refrax per camera -> {output_dir}/syncd/cam{i}
+  correct: true    # Refrax per camera -> {output_dir}/syncd/rig1/cam{i}
   camchain: true   # -> {output_dir}/calibration-camchain.yaml (new intrinsics, same rig extrinsics)
 
 output_dir: refraction_output

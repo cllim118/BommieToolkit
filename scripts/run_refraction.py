@@ -2,12 +2,12 @@
 """
 Flat-port refraction removal with Refrax (https://github.com/cllim118/Refrax), driven by a single yaml config.
 
-Inputs: the synced underwater frames of run_images.py ({images_dir}/syncd/cam{i}) and the in-air rig
+Inputs: the synced underwater frames of run_images.py ({images_dir}/syncd/rig1/cam{i}) and the in-air rig
 calibration of run_calibration.py ({calibration_dir}/calibration-camchain.yaml).
 
 Steps (toggle with the yaml `steps:` section or --steps):
   correct   per camera: in-air intrinsics (scaled to the frame size) + housing -> Refrax
-            -> corrected frames {output_dir}/syncd/cam{i} + {output_dir}/refrax/cam{i}/new_calibration.yaml
+            -> corrected frames {output_dir}/syncd/rig1/cam{i} + {output_dir}/refrax/cam{i}/new_calibration.yaml
   camchain  in-air camchain with each camera's intrinsics replaced by the Refrax pinhole ones (no distortion,
             new resolution); rig extrinsics unchanged -> {output_dir}/calibration-camchain.yaml
 
@@ -152,7 +152,7 @@ def main() -> None:
     ], active)
 
     print("\nDone. Outputs (use as images_dir and calibration_dir in colmap.yaml):")
-    for p in (refr.out / "syncd", refr.camchain):
+    for p in (refr.out / "syncd" / "rig1", refr.camchain):
         print(f"  {p}")
 
 

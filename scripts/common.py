@@ -94,7 +94,7 @@ def get_videos(cfg: dict) -> list[Path]:
 
 def synced_dirs(images_dir: Path, n: int) -> list[Path]:
     """Per-camera synced frame folders written by run_images.py."""
-    return [images_dir / "syncd" / f"cam{i}" for i in range(n)]
+    return [images_dir / "syncd" / "rig1" / f"cam{i}" for i in range(n)]
 
 
 def get_synced_dirs(cfg: dict) -> list[Path]:
@@ -103,10 +103,10 @@ def get_synced_dirs(cfg: dict) -> list[Path]:
         fail("Config must set `images_dir` (output_dir of run-images).")
     images_dir = to_path(cfg["images_dir"])
     n = 0
-    while (images_dir / "syncd" / f"cam{n}").is_dir():
+    while (images_dir / "syncd" / "rig1" / f"cam{n}").is_dir():
         n += 1
     if n == 0:
-        fail(f"No synced frames in {images_dir / 'synced'} - run `pixi run run-images` first.")
+        fail(f"No synced frames in {images_dir / 'syncd' / 'rig1'} - run `pixi run run-images` first.")
     dirs = synced_dirs(images_dir, n)
     for d in dirs:
         if not list_images(d):

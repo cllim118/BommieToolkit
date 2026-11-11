@@ -17,9 +17,9 @@ The toolkit runs in five stages (refraction removal only for underwater data). E
 
 | Stage | Command | Config | Main output |
 |---|---|---|---|
-| Image extraction | `pixi run run-images <cfg>` | `configs/images.yaml` | `syncd/cam{i}` |
+| Image extraction | `pixi run run-images <cfg>` | `configs/images.yaml` | `syncd/rig1/cam{i}` |
 | Rig calibration (Kalibr) | `pixi run run-calibration <cfg>` | `configs/calibration.yaml` | `calibration-camchain.yaml`, `rig_config.json` |
-| Refraction removal (Refrax) | `pixi run run-refraction <cfg>` | `configs/refraction.yaml` | corrected `syncd/cam{i}`, `calibration-camchain.yaml` |
+| Refraction removal (Refrax) | `pixi run run-refraction <cfg>` | `configs/refraction.yaml` | corrected `syncd/rig1/cam{i}`, `calibration-camchain.yaml` |
 | COLMAP reconstruction | `pixi run run-colmap <cfg>` | `configs/colmap.yaml` | `sparse/0`, `transforms.json` |
 | Gaussian splatting (nerfstudio) | `pixi run run-3dgs <cfg>` | `configs/3dgs.yaml` | `splat_metric.ply` |
 
@@ -53,7 +53,7 @@ Run `run-images` once per video set, with one config each: the calibration targe
 
 `run-images` steps:
 - `extract`: video → frames (`{output_dir}/frames/cam{i}`), named by the GoPro timecode in ns.
-- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/syncd/cam{i}`);
+- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/syncd/rig1/cam{i}`);
   `sync.sample_step` subsamples the matched sets.
 
 Any number of cameras is supported; `cam0` (first entry in `cameras:`) is the reference. For calibration,
@@ -89,7 +89,7 @@ clones and sets it up.
 `files/housing.yaml`: port normal, refractive indices, camera-to-port distance `d0` and glass thickness
 `tglass`, in metres). Steps:
 - `correct`: for each camera, scales the in-air intrinsics to the frame size and runs Refrax →
-  `{output_dir}/syncd/cam{i}` (PNG) and `{output_dir}/refrax/cam{i}/new_calibration.yaml`.
+  `{output_dir}/syncd/rig1/cam{i}` (PNG) and `{output_dir}/refrax/cam{i}/new_calibration.yaml`.
 - `camchain`: writes `{output_dir}/calibration-camchain.yaml`: the in-air camchain with each camera's
   intrinsics replaced by the Refrax pinhole ones (no distortion, new resolution). The rig extrinsics are kept.
 

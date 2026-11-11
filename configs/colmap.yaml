@@ -8,7 +8,7 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  import: true         # {images_dir}/syncd/cam{i} -> {output_dir}/images/rig1/camera{i+1}
+  import: true         # {images_dir}/syncd/rig1/cam{i} -> {output_dir}/images/rig1/camera{i+1}
   masks: true          # no-op unless use_masks (interactive SAM3 app)
   colmap: true         # -> {output_dir}/database.db, {output_dir}/sparse/0
   colmap2nerf: true    # -> {output_dir}/transforms.json

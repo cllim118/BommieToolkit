@@ -13,7 +13,7 @@
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
   extract: true   # videos -> {output_dir}/frames/cam{i}
-  sync: true      # timestamp-matched frames -> {output_dir}/syncd/cam{i}
+  sync: true      # timestamp-matched frames -> {output_dir}/syncd/rig1/cam{i}
 
 output_dir: images_scene
 
