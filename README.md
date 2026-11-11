@@ -13,12 +13,13 @@
 
 ## Pipeline
 
-The toolkit runs in four stages. Each stage is driven by **one yaml file** (templates in `configs/`):
+The toolkit runs in five stages (refraction removal only for underwater data). Each stage is driven by **one yaml file** (templates in `configs/`):
 
 | Stage | Command | Config | Main output |
 |---|---|---|---|
-| Image extraction | `pixi run run-images <cfg>` | `configs/images.yaml` | `synced/cam{i}` |
+| Image extraction | `pixi run run-images <cfg>` | `configs/images.yaml` | `syncd/cam{i}` |
 | Rig calibration (Kalibr) | `pixi run run-calibration <cfg>` | `configs/calibration.yaml` | `calibration-camchain.yaml`, `rig_config.json` |
+| Refraction removal (Refrax) | `pixi run run-refraction <cfg>` | `configs/refraction.yaml` | corrected `syncd/cam{i}`, `calibration-camchain.yaml` |
 | COLMAP reconstruction | `pixi run run-colmap <cfg>` | `configs/colmap.yaml` | `sparse/0`, `transforms.json` |
 | Gaussian splatting (nerfstudio) | `pixi run run-3dgs <cfg>` | `configs/3dgs.yaml` | `splat_metric.ply` |
 
@@ -35,13 +36,15 @@ re-run only part of a stage:
 ```bash
 pixi run run-images configs/local/my_scene_images.yaml --steps sync
 pixi run run-calibration configs/local/my_rig.yaml --steps calibrate,rig_config
+pixi run run-refraction configs/local/my_scene_refraction.yaml --steps camchain
 pixi run run-colmap configs/local/my_scene.yaml --steps colmap,colmap2nerf
 pixi run run-3dgs configs/local/my_scene_3dgs.yaml --steps export,transform
 ```
 
-Stages are chained through paths: `calibration.yaml` and `colmap.yaml` point at a `run-images` `output_dir`
-(`images_dir`), `colmap.yaml` points at the calibration `output_dir` (`calibration_dir`), and `3dgs.yaml`
-points at the COLMAP `output_dir` (`colmap_dir`).
+Stages are chained through paths: `calibration.yaml`, `refraction.yaml` and `colmap.yaml` point at a
+`run-images` `output_dir` (`images_dir`); `refraction.yaml` and `colmap.yaml` point at the calibration
+`output_dir` (`calibration_dir`); and `3dgs.yaml` points at the COLMAP `output_dir` (`colmap_dir`). For
+underwater data, `colmap.yaml` uses the refraction `output_dir` as both `images_dir` and `calibration_dir`.
 
 ### 0. Image extraction
 
@@ -50,7 +53,7 @@ Run `run-images` once per video set, with one config each: the calibration targe
 
 `run-images` steps:
 - `extract`: video → frames (`{output_dir}/frames/cam{i}`), named by the GoPro timecode in ns.
-- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/synced/cam{i}`);
+- `sync`: keeps frames that have a timestamp match in every camera (`{output_dir}/syncd/cam{i}`);
   `sync.sample_step` subsamples the matched sets.
 
 Any number of cameras is supported; `cam0` (first entry in `cameras:`) is the reference. For calibration,
@@ -64,7 +67,6 @@ pixi run -e kalibr build
 ```
 
 `run-calibration` reads the synced frames from `images_dir`. Steps:
-- `housing`: underwater refraction removal (only if `housing.enabled`, see below).
 - `calibrate`: Kalibr multi-camera calibration → `calibration-camchain.yaml`, report PDF.
 - `rig_config`: camchain → COLMAP `rig_config.json`.
 
@@ -73,16 +75,32 @@ pixi run -e kalibr build
 - If Kalibr fails to initialise the focal length, `manual_focal_length_init: true` makes it ask for one per
   camera; a good guess is half the image height. Set `focal_length_guesses: [...]` to answer automatically.
 
-**Underwater housing (flat port).** First calibrate the rig in air. Then run a second calibration on the
-underwater target frames with `housing.enabled: true` and `housing.air_calibration_dir` pointing at the in-air
-calibration. This estimates the refraction per camera (uwsfm / Pinax), writes `undistort_map_cam{i}.yaml`,
-undistorts the frames and re-calibrates on them.
+For underwater data, calibrate the rig **in air** (with `camera_model: pinhole-radtan`) and remove the
+refraction in the next stage.
 
-### 2. COLMAP reconstruction
+### 2. Refraction removal (underwater only)
+
+[Refrax](https://github.com/cllim118/Refrax) warps each underwater frame behind a flat port into a
+refraction-free pinhole image. It lives in its own pixi project (`refrax/`); the first `run-refraction`
+clones and sets it up.
+
+`run-refraction` reads the synced underwater frames from `images_dir`, the in-air
+`calibration-camchain.yaml` from `calibration_dir` and the housing from `housing` (default
+`files/housing.yaml`: port normal, refractive indices, camera-to-port distance `d0` and glass thickness
+`tglass`, in metres). Steps:
+- `correct`: for each camera, scales the in-air intrinsics to the frame size and runs Refrax →
+  `{output_dir}/syncd/cam{i}` (PNG) and `{output_dir}/refrax/cam{i}/new_calibration.yaml`.
+- `camchain`: writes `{output_dir}/calibration-camchain.yaml`: the in-air camchain with each camera's
+  intrinsics replaced by the Refrax pinhole ones (no distortion, new resolution). The rig extrinsics are kept.
+
+The correction is exact at the scene depth `correction.z0_fixed`. `correction.zoom: null` picks the zoom per
+camera; `fit_canvas` and `crop_valid_bbox` set the output size (see the Refrax README). Point `colmap.yaml`'s
+`images_dir` and `calibration_dir` at the refraction `output_dir`.
+
+### 3. COLMAP reconstruction
 
 `run-colmap` reads the synced frames from `images_dir`. Steps:
 - `import`: copies them into `{output_dir}/images/rig1/camera{i+1}`.
-- `undistort`: applies the housing undistort maps from `calibration_dir` (only if `refraction_removal: true`).
 - `masks`: (only if `use_masks: true`) opens the SAM3 app at http://0.0.0.0:7997. It needs a Hugging Face
   login first (`pixi run -e sam hf auth login`). Save masks to `{output_dir}/masks`, mirroring the `images` layout.
 - `colmap`: builds `rig_config.json` with intrinsics scaled to the frame size, then runs feature extraction,
@@ -104,7 +122,7 @@ pixi run visualize_colmap --sparse_dir colmap_output/sparse/0 --images_dir colma
 #   --resize 1280x720 downscale images before streaming
 ```
 
-### 3. Gaussian splatting
+### 4. Gaussian splatting
 
 nerfstudio lives in its own pixi project (`nerfstudio/`); the first `run-3dgs` clones and sets it up.
 

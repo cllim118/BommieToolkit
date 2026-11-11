@@ -13,10 +13,11 @@ colmap2nerf = "python scripts/colmap2nerf.py"
 visualize_colmap = "python scripts/colmap_rerun.py"
 transform_splats = "python scripts/transform_splats.py"
 
-# Yaml-driven pipeline: images -> calibration -> colmap -> 3dgs (one config file per stage, see configs/)
+# Yaml-driven pipeline: images -> calibration -> refraction -> colmap -> 3dgs (one config file per stage, see configs/)
 #   pixi run run-colmap [config.yaml] [--steps colmap,colmap2nerf]
 run-images = "python scripts/run_images.py"
 run-calibration = "python scripts/run_calibration.py"
+run-refraction = "python scripts/run_refraction.py"
 run-colmap = "python scripts/run_colmap.py"
 run-3dgs = "python scripts/run_3dgs.py"
 
@@ -33,7 +34,7 @@ plyfile = "*"
 kalibr = {features = ["kalibr"], no-default-feature = true}
 colmap = {features = ["colmap"], no-default-feature = true}
 nerfstudio = {features = ["nerfstudio"], no-default-feature = true}
-uwsfm = {features = ["uwsfm"], no-default-feature = true}
+refrax = {features = ["refrax"], no-default-feature = true}
 sam = {features = ["sam"], no-default-feature = true}
 splatpcl = {features = ["splatpcl"], no-default-feature = true}
 
@@ -230,37 +231,17 @@ cmd = "pixi run --manifest-path nerfstudio/pixi.toml post-install && mkdir -p ne
 
 ########################################################################################################################
 ########################################################################################################################
-# uwsfm feature
-[feature.uwsfm]
-channels = ["https://prefix.dev/conda-forge", "emilioolivastri"]
+# refrax feature (flat-port refraction removal, own pixi project in refrax/)
+[feature.refrax]
+channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64"]
 
-[feature.uwsfm.system-requirements]
-cuda = "12.4"
-
-[feature.uwsfm.pypi-dependencies]
-uwsfm = { git = "https://github.com/EmilioOlivastri/PinaxPython.git" }
-
-[feature.uwsfm.tasks.pinax-clone]
-outputs = ["pinax/pixi.toml"]
-cmd = "test -d pinax || git clone https://github.com/EmilioOlivastri/PinaxPython.git pinax"
-
-[feature.uwsfm.tasks.pinax-post-install]
-depends-on = ["pinax-clone"]
-inputs = ["pinax/pixi.toml"]
-outputs = ["pinax/.bommie/post-install.stamp"]
-cmd = "mkdir -p pinax/.bommie && touch pinax/.bommie/post-install.stamp"
-
-
-[feature.uwsfm.dependencies]
-refractive_colmap = "==3.9.0"
-calibmar = "==1.1.0"
+[feature.refrax.dependencies]
 git = "*"
 
-[feature.uwsfm.tasks.build-no-display-stub]
-outputs = ["scripts/no_display.so"]
-cmd = "gcc -shared -fPIC -o scripts/no_display.so scripts/no_display.c"
-
+[feature.refrax.tasks.refrax-clone]
+outputs = ["refrax/pixi.toml"]
+cmd = "test -d refrax || git clone https://github.com/cllim118/Refrax.git refrax"
 
 ########################################################################################################################
 ########################################################################################################################

@@ -1,8 +1,8 @@
-# GoPro Housing Example
-housing: "FLATPORT"
-glass_thickness: 0.002 # Known 
-distance_to_glass: 0.005 # Initial Guess
-
-glass_refractive_index: 1.492 # Known
-water_refractive_index: 1.345 # Known
-
+# Flat-port housing for run-refraction (Refrax). Lengths in metres (same unit as correction.z0_fixed).
+# GoPro housing example - measure d0 for your own housing.
+n_port: [0.0, 0.0, 1.0]   # port normal in the camera frame
+mu_a: 1.0                 # refractive index of air
+mu_g: 1.492               # refractive index of the port glass
+mu_w: 1.345               # refractive index of water
+d0: 0.02                  # camera centre to inner port surface
+tglass: 0.002             # port thickness

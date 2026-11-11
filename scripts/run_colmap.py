@@ -2,11 +2,11 @@
 """
 Synced rig frames -> COLMAP sparse reconstruction -> transforms.json, driven by a single yaml config.
 
-Input: the synced frames of run_images.py ({images_dir}/synced/cam{i}).
+Input: the synced frames of run_images.py ({images_dir}/syncd/cam{i}) - or of run_refraction.py for underwater
+data, whose output_dir is then both images_dir and calibration_dir.
 
 Steps (toggle with the yaml `steps:` section or --steps):
   import       copy the synced frames -> {output_dir}/images/rig1/camera{i+1}
-  undistort    (only if refraction_removal) apply the housing undistort maps from calibration_dir in place
   masks        (only if use_masks) launch the interactive SAM3 app; save masks to {output_dir}/masks
   colmap       rig_config.json (scaled to the frames) -> feature extraction -> rig config -> matching
                -> mapper -> {output_dir}/sparse/0 (+ TXT model and mesh.ply in sparse/0_txt)
@@ -22,7 +22,7 @@ from PIL import Image
 
 from common import fail, get_synced_dirs, list_images, load_config, pixi, run_script, run_steps, to_path
 
-STEPS = ["import", "undistort", "masks", "colmap", "colmap2nerf"]
+STEPS = ["import", "masks", "colmap", "colmap2nerf"]
 
 
 class Reconstruction:
@@ -59,7 +59,6 @@ class Reconstruction:
         self.transforms = self.out / "transforms.json"
 
     def import_images(self) -> None:
-        """Copy (not link) the frames: the undistort step rewrites them in place."""
         for src, dst in zip(self.synced_dirs, self.image_dirs):
             if dst.exists():
                 shutil.rmtree(dst)
@@ -67,16 +66,6 @@ class Reconstruction:
             for image in list_images(src):
                 shutil.copy2(image, dst / image.name)
             print(f"{src} -> {dst}")
-
-    def undistort(self) -> None:
-        if not self.cfg.get("refraction_removal", False):
-            print("(refraction_removal is false - nothing to do)")
-            return
-        for i, image_dir in enumerate(self.image_dirs):
-            undistort_map = self.calib_dir / f"undistort_map_cam{i}.yaml"
-            if not undistort_map.is_file():
-                fail(f"{undistort_map} not found - run run-calibration with housing.enabled first.")
-            pixi("uwsfm", "undistorter", undistort_map, image_dir, image_dir)
 
     def make_masks(self) -> None:
         if not self.use_masks:
@@ -205,7 +194,6 @@ def main() -> None:
 
     run_steps([
         ("import", "Importing synced frames", rec.import_images),
-        ("undistort", "Removing refraction (housing undistort maps)", rec.undistort),
         ("masks", "Creating masks with SAM3", rec.make_masks),
         ("colmap", "COLMAP reconstruction", rec.colmap),
         ("colmap2nerf", "Converting to transforms.json", rec.colmap2nerf),

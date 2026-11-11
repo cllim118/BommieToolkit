@@ -1,6 +1,7 @@
 # ===================================================
 # Rig calibration (Kalibr): synced frames -> camchain + rig_config.json
 # Extract the frames first with run-images (configs/images.yaml, calibration settings).
+# For underwater data, calibrate in air; run-refraction (configs/refraction.yaml) builds the underwater calibration.
 #   pixi run run-calibration configs/calibration.yaml
 #   pixi run run-calibration configs/calibration.yaml --steps calibrate,rig_config
 # Relative paths are resolved from the repo root.
@@ -8,13 +9,12 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  housing: true      # no-op unless housing.enabled
   calibrate: true    # Kalibr -> {output_dir}/calibration-camchain.yaml
   rig_config: true   # -> {output_dir}/rig_config.json
 
 output_dir: calibration_output
 
-# Output of run-images for the calibration target videos. Kalibr runs on {images_dir}/synced/cam{i}
+# Output of run-images for the calibration target videos. Kalibr runs on {images_dir}/syncd/cam{i}
 # (cam0 is the reference camera).
 images_dir: images_calibration
 
@@ -27,10 +27,3 @@ calibrate:
   manual_focal_length_init: true # Kalibr asks for a focal length per camera if init fails
   focal_length_guesses: []       # e.g. [1400, 1400] - answers the prompt automatically
 
-# Underwater refraction removal (flat port). When enabled, the cameras above are the
-# *underwater* target frames (images_dir) and Kalibr runs on the undistorted frames.
-# Needs a previous in-air calibration of the same rig (same run-images extract.resolution).
-housing:
-  enabled: false
-  air_calibration_dir: calibration_output_air   # folder with the in-air calibration-camchain.yaml
-  params: files/housing.yaml

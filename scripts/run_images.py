@@ -5,7 +5,7 @@ The output folder is the `images_dir` input of run_calibration.py and run_colmap
 
 Steps (toggle with the yaml `steps:` section or --steps):
   extract  videos -> {output_dir}/frames/cam{i}, named by the GoPro timecode in ns
-  sync     keep frames that have a timestamp match in every camera -> {output_dir}/synced/cam{i}
+  sync     keep frames that have a timestamp match in every camera -> {output_dir}/syncd/cam{i}
 
 Usage:
     pixi run run-images configs/images.yaml

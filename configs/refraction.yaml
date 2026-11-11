@@ -1,0 +1,32 @@
+# ===================================================
+# Refraction removal (flat port, Refrax): underwater synced frames + in-air calibration
+#   -> refraction-free pinhole frames + calibration
+#   pixi run run-refraction configs/refraction.yaml
+#   pixi run run-refraction configs/refraction.yaml --steps camchain
+# Relative paths are resolved from the repo root.
+#
+# Use output_dir as both `images_dir` and `calibration_dir` in colmap.yaml.
+# ===================================================
+
+# Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
+steps:
+  correct: true    # Refrax per camera -> {output_dir}/syncd/cam{i}
+  camchain: true   # -> {output_dir}/calibration-camchain.yaml (new intrinsics, same rig extrinsics)
+
+output_dir: refraction_output
+
+# Output of run-images for the (underwater) scene videos.
+images_dir: images_scene
+
+# Output of run-calibration for the rig calibrated *in air* (pinhole-radtan). Its intrinsics are scaled
+# to the scene frame size, so the calibration may use a different extract.resolution.
+calibration_dir: calibration_output
+
+# Flat-port housing: a yaml file (see files/housing.yaml) or the same keys inline. Same for every camera.
+housing: files/housing.yaml
+
+correction:
+  z0_fixed: 1.0          # scene depth (same unit as the housing lengths) the correction is exact for
+  zoom: null             # null = automatic per camera (best pinhole fit at z0_fixed)
+  fit_canvas: true       # true = output sized to hold the whole corrected image; false = source W x H
+  crop_valid_bbox: true  # crop to the largest rectangle without invalid pixels
