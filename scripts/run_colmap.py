@@ -9,13 +9,17 @@ COLMAP reads the frames in place: {images_dir}/syncd is the image root, so image
 
 Steps (toggle with the yaml `steps:` section or --steps):
   masks        (only if use_masks) launch the interactive SAM3 app; save masks to {output_dir}/masks
-  colmap       rig_config.json (scaled to the frames) -> feature extraction -> rig config -> matching
-               -> mapper -> {output_dir}/sparse/0 (+ TXT model and mesh.ply in sparse/0_txt)
+  colmap       rig_config.json (camchain intrinsics scaled to the frames) -> feature extraction -> rig config
+               -> matching -> mapper -> {output_dir}/sparse/0 (+ TXT model and mesh.ply in sparse/0_txt).
+               Camchain without rig extrinsics (T_cn_cnm1): each camera is its own rig (intrinsics only). With
+               colmap.derive_rig_poses, that reconstruction ({output_dir}/sparse_norig/0) is used to derive the
+               rig poses, then the mapper runs again with the rig (poses refined in bundle adjustment).
   colmap2nerf  sparse/0_txt + images -> {output_dir}/transforms.json (input for run_3dgs.py)
 
 Usage:
     pixi run run-colmap configs/colmap.yaml
 """
+import json
 import shutil
 from pathlib import Path
 
@@ -53,8 +57,10 @@ class Reconstruction:
         self.static_mask_dir = self.out / "static_masks"
         self.colmap_masks = self.out / "colmap_masks"
         self.rig_config = self.out / "rig_config.json"
+        self.rig_config_derive = self.out / "rig_config_derive.json"
         self.database = self.out / "database.db"
         self.sparse = self.out / "sparse"
+        self.sparse_norig = self.out / "sparse_norig"
         self.model = self.sparse / "0"
         self.model_txt = self.sparse / "0_txt"
         self.mesh = self.model_txt / "mesh.ply"
@@ -77,13 +83,20 @@ class Reconstruction:
 
         # Fresh reconstruction every time: COLMAP would otherwise append to an old database.
         self.database.unlink(missing_ok=True)
-        if self.sparse.exists():
-            shutil.rmtree(self.sparse)
+        for d in (self.sparse, self.sparse_norig):
+            if d.exists():
+                shutil.rmtree(d)
         self.sparse.mkdir(parents=True)
 
-        # Scale the calibrated intrinsics to the resolution of the extracted frames.
+        # Camera model and intrinsics from the camchain, scaled to the resolution of the extracted frames.
         run_script("convert_camchain_to_rig_config.py", camchain, self.rig_config,
                    "--image-dirs", *self.image_dirs)
+        has_poses = rig_has_poses(self.rig_config)
+        derive = not has_poses and self.n > 1 and bool(cfg.get("derive_rig_poses", False))
+        if not has_poses and self.n > 1:
+            print(f"{camchain} has no rig extrinsics (T_cn_cnm1): every camera is its own rig"
+                  + (" - deriving the rig poses from that reconstruction." if derive else
+                     " (set colmap.derive_rig_poses to derive the rig poses)."))
 
         cmd = [
             "feature_extractor",
@@ -96,6 +109,7 @@ class Reconstruction:
             cmd += ["--ImageReader.mask_path", self.link_colmap_masks()]
         colmap(*cmd, *cfg.get("feature_extractor_args", []))
 
+        # Sets each camera's model (OPENCV = pinhole-radtan) and intrinsics, and the rig if the camchain has poses.
         colmap("rig_configurator", "--database_path", self.database, "--rig_config_path", self.rig_config)
 
         matcher = cfg.get("matcher", "sequential")
@@ -106,12 +120,33 @@ class Reconstruction:
                "--FeatureMatching.type", cfg.get("matching_type", "SIFT_BRUTEFORCE"),
                *cfg.get("matcher_args", []))
 
-        mapper_opts = [arg for k, v in (cfg.get("mapper") or {}).items() for arg in (f"--Mapper.{k}", v)]
-        colmap("mapper",
-               "--database_path", self.database,
-               "--image_path", self.images,
-               "--output_path", self.sparse,
-               *mapper_opts)
+        mapper = dict(cfg.get("mapper") or {})
+
+        def run_mapper(output: Path, options: dict) -> None:
+            colmap("mapper",
+                   "--database_path", self.database,
+                   "--image_path", self.images,
+                   "--output_path", output,
+                   *[arg for k, v in options.items() for arg in (f"--Mapper.{k}", v)])
+
+        if derive:
+            # Pass 1: every camera on its own, then derive sensor_from_rig from that reconstruction.
+            # Needs at least one frame (same file name in every cam folder) with all cameras registered.
+            self.sparse_norig.mkdir(parents=True)
+            run_mapper(self.sparse_norig, mapper)
+            initial = self.sparse_norig / "0"
+            if not initial.is_dir():
+                fail(f"COLMAP mapper (without rig) did not produce {initial}")
+            run_script("convert_camchain_to_rig_config.py", camchain, self.rig_config_derive,
+                       "--image-dirs", *self.image_dirs, "--rig-without-poses")
+            colmap("rig_configurator",
+                   "--database_path", self.database,
+                   "--rig_config_path", self.rig_config_derive,
+                   "--input_path", initial)
+            # The derived poses are only estimates: refine them in pass 2.
+            mapper["ba_refine_sensor_from_rig"] = 1
+
+        run_mapper(self.sparse, mapper)
 
         if not self.model.is_dir():
             fail(f"COLMAP mapper did not produce {self.model}")
@@ -167,6 +202,13 @@ class Reconstruction:
                 link.parent.mkdir(parents=True, exist_ok=True)
                 link.symlink_to(mask)
         return self.colmap_masks
+
+
+def rig_has_poses(rig_config: Path) -> bool:
+    """True if rig_config.json is one rig whose non-reference cameras all have a cam_from_rig pose."""
+    rigs = json.loads(rig_config.read_text())
+    return len(rigs) == 1 and all("cam_from_rig_rotation" in cam
+                                  for cam in rigs[0]["cameras"] if not cam.get("ref_sensor"))
 
 
 def colmap(*args) -> None:

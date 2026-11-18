@@ -20,7 +20,8 @@ output_dir: colmap_output
 images_dir: /home/chelim/chelim/BommieToolkit/refrax_output/p04_s2
 
 # Output of run-calibration (or of run-refraction for underwater data).
-# Its calibration-camchain.yaml gives the rig intrinsics/extrinsics.
+# Its calibration-camchain.yaml gives each camera's model and intrinsics (pinhole-radtan -> COLMAP OPENCV)
+# and, if it has T_cn_cnm1, the rig extrinsics. Without them every camera is reconstructed as its own rig.
 calibration_dir: /home/chelim/chelim/BommieToolkit/refrax_output/p04_s2
 
 # Use SAM3 masks from {output_dir}/masks in COLMAP and transforms.json.
@@ -37,12 +38,15 @@ colmap:
   feature_type: SIFT              # SIFT | ALIKED_N16ROT
   matching_type: SIFT_BRUTEFORCE  # SIFT_BRUTEFORCE | SIFT_LIGHTGLUE | ALIKED_LIGHTGLUE
   matcher: sequential             # sequential | exhaustive
+  # Camchain without rig extrinsics: derive the rig poses from a first reconstruction without the rig
+  # ({output_dir}/sparse_norig), then reconstruct again with the rig. Arbitrary scale, about 2x the run time.
+  derive_rig_poses: false
   # Any --Mapper.<key> option.
   mapper:
     ba_refine_focal_length: 0
     ba_refine_principal_point: 0
     ba_refine_extra_params: 0
-    ba_refine_sensor_from_rig: 0  # keep the calibrated rig extrinsics fixed
+    ba_refine_sensor_from_rig: 0  # keep the calibrated rig extrinsics fixed (forced to 1 when derived)
     ba_use_gpu: 1
   # Extra raw arguments, e.g. ["--SequentialMatching.overlap", "20"]
   feature_extractor_args: []

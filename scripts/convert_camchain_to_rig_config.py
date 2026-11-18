@@ -95,7 +95,33 @@ def scaled_camera_params(cam_data, target_size=None):
     return intrinsics + list(dist)
 
 
-def yaml_to_rig_config(yaml_path: Path, json_path: Path, image_dirs=None):
+# Kalibr (camera_model, distortion_model) -> COLMAP camera model. Params: intrinsics + distortion_coeffs.
+COLMAP_MODELS = {
+    ("pinhole", "radtan"): "OPENCV",  # fx, fy, cx, cy, k1, k2, p1, p2
+}
+
+
+def colmap_model(cam_key, cam_data):
+    key = (cam_data.get("camera_model", "pinhole"), cam_data.get("distortion_model", "radtan"))
+    if key not in COLMAP_MODELS:
+        supported = ", ".join(f"{c}-{d}" for c, d in COLMAP_MODELS)
+        raise ValueError(f"{cam_key}: camera model {key[0]}-{key[1]} is not supported (supported: {supported}).")
+    return COLMAP_MODELS[key]
+
+
+def matmul4(A, B):
+    return [[sum(A[i][k] * B[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+
+
+def yaml_to_rig_config(yaml_path: Path, json_path: Path, image_dirs=None, rig_without_poses=False):
+    """
+    Write a COLMAP rig_config.json from a Kalibr camchain:
+      - every camera gets its calibrated intrinsics/distortion (scaled to the frame size if image_dirs is given);
+      - if every camera after cam0 has T_cn_cnm1: one rig with cam0 as reference and cam_from_rig poses;
+      - otherwise: one single-camera rig per camera (intrinsics only, no rig constraint), or with
+        rig_without_poses one multi-camera rig without poses (for rig_configurator --input_path).
+    Returns True if the rig poses came from the camchain.
+    """
     if not yaml_path.is_file():
         raise FileNotFoundError(
             f"Camchain file not found: {yaml_path}. Run kalibr calibration first or pass camchain_path."
@@ -112,41 +138,40 @@ def yaml_to_rig_config(yaml_path: Path, json_path: Path, image_dirs=None):
 
     image_dirs = image_dirs or []
     image_sizes = [first_image_size(path) for path in image_dirs]
-    cameras_out = []
+    has_poses = all("T_cn_cnm1" in calib[k] for k in cam_keys[1:])
 
+    cameras_out = []
+    T_cam_from_ref = [[float(i == j) for j in range(4)] for i in range(4)]  # cam0 -> cam0
     for idx, cam_key in enumerate(cam_keys):
         cam_data = calib[cam_key]
-
         target_size = image_sizes[idx] if idx < len(image_sizes) else None
 
-        # Basic camera dict
         cam_out = {
             "image_prefix": f"rig1/cam{idx}/",
-            "camera_model_name": "OPENCV",
+            "camera_model_name": colmap_model(cam_key, cam_data),
             "camera_params": scaled_camera_params(cam_data, target_size),
         }
 
-        # First camera is reference sensor
         if idx == 0:
             cam_out["ref_sensor"] = True
-        else:
-            # If extrinsics are present (Kalibr style T_cn_cnm1), convert
-            T = cam_data.get("T_cn_cnm1", None)
-            if T is not None:
-                # T is 4x4; take 3x3 rotation and translation
-                R = [row[:3] for row in T[:3]]
-                t = [T[0][3], T[1][3], T[2][3]]
-
-                cam_out["cam_from_rig_rotation"] = rotmat_to_quat(R)
-                cam_out["cam_from_rig_translation"] = t
+        elif has_poses:
+            # Kalibr T_cn_cnm1 maps cam{n-1} -> cam{n}; chain them to get cam{n} from cam0 (the rig frame).
+            T_cam_from_ref = matmul4(cam_data["T_cn_cnm1"], T_cam_from_ref)
+            R = [row[:3] for row in T_cam_from_ref[:3]]
+            cam_out["cam_from_rig_rotation"] = rotmat_to_quat(R)
+            cam_out["cam_from_rig_translation"] = [T_cam_from_ref[i][3] for i in range(3)]
 
         cameras_out.append(cam_out)
 
-    rig_config = [{"cameras": cameras_out}]
+    if has_poses or rig_without_poses:
+        rig_config = [{"cameras": cameras_out}]
+    else:
+        rig_config = [{"cameras": [{**cam, "ref_sensor": True}]} for cam in cameras_out]
 
     json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w") as f:
         json.dump(rig_config, f, indent=2)
+    return has_poses
 
 
 def main():
@@ -170,11 +195,18 @@ def main():
         default=None,
         help="Optional image directories, in camchain order, used to scale intrinsics to extracted image size.",
     )
+    ap.add_argument(
+        "--rig-without-poses",
+        action="store_true",
+        help="If the camchain has no T_cn_cnm1, write one multi-camera rig without poses (to derive them with "
+             "colmap rig_configurator --input_path) instead of one single-camera rig per camera.",
+    )
     args = ap.parse_args()
 
     try:
-        yaml_to_rig_config(args.yaml_in, args.json_out, args.image_dirs)
-    except FileNotFoundError as exc:
+        has_poses = yaml_to_rig_config(args.yaml_in, args.json_out, args.image_dirs, args.rig_without_poses)
+        print(f"Wrote {args.json_out} ({'rig poses from the camchain' if has_poses else 'no rig poses in the camchain'})")
+    except (FileNotFoundError, ValueError) as exc:
         print(exc, file=sys.stderr)
         sys.exit(1)
 

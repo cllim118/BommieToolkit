@@ -106,6 +106,10 @@ camera; `fit_canvas` and `crop_valid_bbox` set the output size (see the Refrax R
 - `colmap`: builds `rig_config.json` with intrinsics scaled to the frame size, then runs feature extraction,
   rig configuration, matching (sequential or exhaustive; SIFT or ALIKED/LightGlue) and the mapper. It also
   exports a TXT model and `mesh.ply`.
+  Each camera's model and intrinsics come from `calibration-camchain.yaml` (Kalibr pinhole-radtan -> COLMAP
+  `OPENCV`). If the camchain has no rig extrinsics (`T_cn_cnm1`), every camera is its own rig. With
+  `colmap.derive_rig_poses: true` it then derives the camera-to-camera poses from that reconstruction
+  (`sparse_norig`) and reconstructs again with the rig.
 - `colmap2nerf`: writes `transforms.json` for nerfstudio.
 
 For a mask that is the same in every frame (housing edges, rig parts in view), set `static_mask` to one
