@@ -121,7 +121,7 @@ def yaml_to_rig_config(yaml_path: Path, json_path: Path, image_dirs=None):
 
         # Basic camera dict
         cam_out = {
-            "image_prefix": f"rig1/camera{idx+1}/",
+            "image_prefix": f"rig1/cam{idx}/",
             "camera_model_name": "OPENCV",
             "camera_params": scaled_camera_params(cam_data, target_size),
         }

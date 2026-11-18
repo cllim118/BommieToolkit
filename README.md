@@ -99,10 +99,10 @@ camera; `fit_canvas` and `crop_valid_bbox` set the output size (see the Refrax R
 
 ### 3. COLMAP reconstruction
 
-`run-colmap` reads the synced frames from `images_dir`. Steps:
-- `import`: copies them into `{output_dir}/images/rig1/camera{i+1}`.
+`run-colmap` reads the synced frames in place from `{images_dir}/syncd/rig1/cam{i}` (no copy), so
+`transforms.json` points into `images_dir` and needs it next to `output_dir`. Steps:
 - `masks`: (only if `use_masks: true`) opens the SAM3 app at http://0.0.0.0:7997. It needs a Hugging Face
-  login first (`pixi run -e sam hf auth login`). Save masks to `{output_dir}/masks`, mirroring the `images` layout.
+  login first (`pixi run -e sam hf auth login`). Save masks to `{output_dir}/masks`, mirroring the `syncd` layout (`rig1/cam{i}`).
 - `colmap`: builds `rig_config.json` with intrinsics scaled to the frame size, then runs feature extraction,
   rig configuration, matching (sequential or exhaustive; SIFT or ALIKED/LightGlue) and the mapper. It also
   exports a TXT model and `mesh.ply`.
@@ -115,9 +115,9 @@ the mask must match the frame size. COLMAP skips the masked area, and nerfstudio
 Visualize a reconstruction with the COLMAP GUI or with [Rerun](https://rerun.io):
 ```bash
 pixi run -e colmap colmap gui --database_path colmap_output/database.db \
-  --image_path colmap_output/images --import_path colmap_output/sparse/0
+  --image_path images_scene/syncd --import_path colmap_output/sparse/0
 
-pixi run visualize_colmap --sparse_dir colmap_output/sparse/0 --images_dir colmap_output/images
+pixi run visualize_colmap --sparse_dir colmap_output/sparse/0 --images_dir images_scene/syncd
 #   --serve           open the viewer in the browser
 #   --resize 1280x720 downscale images before streaming
 ```

@@ -5,8 +5,9 @@ Synced rig frames -> COLMAP sparse reconstruction -> transforms.json, driven by 
 Input: the synced frames of run_images.py ({images_dir}/syncd/rig1/cam{i}) - or of run_refraction.py for underwater
 data, whose output_dir is then both images_dir and calibration_dir.
 
+COLMAP reads the frames in place: {images_dir}/syncd is the image root, so image names are rig1/cam{i}/<frame>.
+
 Steps (toggle with the yaml `steps:` section or --steps):
-  import       copy the synced frames -> {output_dir}/images/rig1/camera{i+1}
   masks        (only if use_masks) launch the interactive SAM3 app; save masks to {output_dir}/masks
   colmap       rig_config.json (scaled to the frames) -> feature extraction -> rig config -> matching
                -> mapper -> {output_dir}/sparse/0 (+ TXT model and mesh.ply in sparse/0_txt)
@@ -22,7 +23,7 @@ from PIL import Image
 
 from common import fail, get_synced_dirs, list_images, load_config, pixi, run_script, run_steps, to_path
 
-STEPS = ["import", "masks", "colmap", "colmap2nerf"]
+STEPS = ["masks", "colmap", "colmap2nerf"]
 
 
 class Reconstruction:
@@ -44,9 +45,10 @@ class Reconstruction:
             fail("use_masks (SAM, per image) and static_mask cannot be combined.")
         self.static_masks = [to_path(p) for p in static] * (self.n if len(static) == 1 else 1)
 
+        # COLMAP image root: {images_dir}/syncd, so image names are rig1/cam{i}/<frame>.
         # Must match the image_prefix written by convert_camchain_to_rig_config.py
-        self.images = self.out / "images"
-        self.image_dirs = [self.images / "rig1" / f"camera{i + 1}" for i in range(self.n)]
+        self.images = self.synced_dirs[0].parent.parent
+        self.image_dirs = self.synced_dirs
         self.masks = self.out / "masks"
         self.static_mask_dir = self.out / "static_masks"
         self.colmap_masks = self.out / "colmap_masks"
@@ -57,15 +59,6 @@ class Reconstruction:
         self.model_txt = self.sparse / "0_txt"
         self.mesh = self.model_txt / "mesh.ply"
         self.transforms = self.out / "transforms.json"
-
-    def import_images(self) -> None:
-        for src, dst in zip(self.synced_dirs, self.image_dirs):
-            if dst.exists():
-                shutil.rmtree(dst)
-            dst.mkdir(parents=True)
-            for image in list_images(src):
-                shutil.copy2(image, dst / image.name)
-            print(f"{src} -> {dst}")
 
     def make_masks(self) -> None:
         if not self.use_masks:
@@ -142,7 +135,7 @@ class Reconstruction:
         run_script("colmap2nerf.py", *cmd)
 
     def copy_static_masks(self) -> list[Path]:
-        """Copy each camera's static mask to {output_dir}/static_masks/camera{i+1}.png, so transforms.json
+        """Copy each camera's static mask to {output_dir}/static_masks/cam{i}.png, so transforms.json
         only references files inside output_dir. Checks the mask matches the frame size."""
         self.static_mask_dir.mkdir(parents=True, exist_ok=True)
         copies = []
@@ -158,8 +151,8 @@ class Reconstruction:
         return copies
 
     def link_colmap_masks(self) -> Path:
-        """COLMAP looks for {mask_path}/{image_name}.png (e.g. rig1/camera1/0001.png.png). Link every frame
-        to its mask - the SAM mask {masks}/rig1/camera1/0001.png or the camera's static mask."""
+        """COLMAP looks for {mask_path}/{image_name}.png (e.g. rig1/cam0/0001.png.png). Link every frame
+        to its mask - the SAM mask {masks}/rig1/cam0/0001.png or the camera's static mask."""
         camera_masks = self.copy_static_masks() if self.static_masks else []
         if self.colmap_masks.exists():
             shutil.rmtree(self.colmap_masks)
@@ -183,7 +176,7 @@ def colmap(*args) -> None:
 def first_frame(image_dir: Path) -> Path:
     images = list_images(image_dir) if image_dir.is_dir() else []
     if not images:
-        fail(f"No frames in {image_dir} - run the import step first.")
+        fail(f"No frames in {image_dir} - run `pixi run run-images` first.")
     return images[0]
 
 
@@ -193,7 +186,6 @@ def main() -> None:
     rec.out.mkdir(parents=True, exist_ok=True)
 
     run_steps([
-        ("import", "Importing synced frames", rec.import_images),
         ("masks", "Creating masks with SAM3", rec.make_masks),
         ("colmap", "COLMAP reconstruction", rec.colmap),
         ("colmap2nerf", "Converting to transforms.json", rec.colmap2nerf),

@@ -8,20 +8,20 @@
 
 # Steps to run (all true if this section is omitted). --steps on the CLI overrides it.
 steps:
-  import: true         # {images_dir}/syncd/rig1/cam{i} -> {output_dir}/images/rig1/camera{i+1}
-  masks: true          # no-op unless use_masks (interactive SAM3 app)
+  masks: false          # no-op unless use_masks (interactive SAM3 app)
   colmap: true         # -> {output_dir}/database.db, {output_dir}/sparse/0
   colmap2nerf: true    # -> {output_dir}/transforms.json
 
 output_dir: colmap_output
 
 # Output of run-images for the scene videos (or of run-refraction for underwater data).
+# COLMAP reads {images_dir}/syncd/rig1/cam{i} in place; transforms.json points there.
 # Cameras in the same order as in the calibration.
-images_dir: images_scene
+images_dir: /home/chelim/chelim/BommieToolkit/refrax_output/p04_s2
 
 # Output of run-calibration (or of run-refraction for underwater data).
 # Its calibration-camchain.yaml gives the rig intrinsics/extrinsics.
-calibration_dir: calibration_output
+calibration_dir: /home/chelim/chelim/BommieToolkit/refrax_output/p04_s2
 
 # Use SAM3 masks from {output_dir}/masks in COLMAP and transforms.json.
 use_masks: false
